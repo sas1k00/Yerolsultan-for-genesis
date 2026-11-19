@@ -192,6 +192,172 @@
     };
   }
 
+  // ------------------------------------------------- the song's moment ---
+  /* Which 30 seconds of the song belong to this day?
+   * Not the intro: the part a person would recognise (it repeats, like a
+   * chorus), whose loudness suits the day's energy, starting where a new part
+   * of the song begins, exactly on a beat. Every number is kept for the
+   * "why" panel. Pure, runs in Node for tests. */
+  function findMoment(x, sr, opts = {}) {
+    const length = opts.length || 30;
+    const duration = x.length / sr;
+    const target = 0.3 + 0.6 * clamp(opts.targetEnergy == null ? 0.5 : opts.targetEnergy, 0, 1);
+    if (duration <= length + 4) {
+      return { start: 0, end: Math.min(duration, length), length: Math.min(duration, length), duration, short: true, target: +target.toFixed(2) };
+    }
+    // ~11 kHz mono
+    const f = Math.max(1, Math.round(sr / 11025)), sr2 = sr / f, n2 = Math.floor(x.length / f);
+    const y = new Float32Array(n2);
+    for (let i = 0; i < n2; i++) { let a = 0; for (let k = 0; k < f; k++) a += x[i * f + k] || 0; y[i] = a / f; }
+
+    // 1) Half-second blocks: loudness and harmony (chroma).
+    const B = 0.5, hop = Math.round(sr2 * B), NC = 4096, nb = Math.floor((n2 - NC) / hop) + 1;
+    const spec = new Float64Array(NC / 2), binHz = sr2 / NC;
+    const db = new Float64Array(nb), cent = new Float64Array(nb), chroma = [];
+    for (let b = 0; b < nb; b++) {
+      const i0 = b * hop;
+      let e = 0;
+      for (let k = 0; k < hop && i0 + k < n2; k++) e += y[i0 + k] * y[i0 + k];
+      db[b] = 10 * Math.log10(e / hop + 1e-10);
+      magSpectrum(y, i0, NC, spec);
+      const c = new Float64Array(12);
+      let num = 0, den = 0;
+      for (let k = 1; k < NC / 2; k++) {
+        const hz = k * binHz;
+        num += hz * spec[k]; den += spec[k];
+        if (hz < 55 || hz > 2000) continue;
+        c[((Math.round(69 + 12 * Math.log2(hz / 440)) % 12) + 12) % 12] += spec[k];
+      }
+      chroma.push(c);
+      cent[b] = den ? num / den : 0;
+    }
+    // Loudness on the song's own scale: its quiet 10 % → 0, loud 95 % → 1.
+    const sorted = Array.from(db).sort((p, q) => p - q);
+    const lo = sorted[Math.floor(nb * 0.1)], hi = sorted[Math.min(nb - 1, Math.floor(nb * 0.95))];
+    const en = Array.from(db, (v) => clamp((v - lo) / Math.max(1e-6, hi - lo), 0, 1));
+    // Harmony relative to the song's average, so "same key everywhere" does not look like repetition.
+    const mean = new Float64Array(12);
+    chroma.forEach((c) => { const t = c.reduce((p, q) => p + q, 0) || 1; for (let k = 0; k < 12; k++) mean[k] += c[k] / t / nb; });
+    const unit = chroma.map((c) => {
+      const t = c.reduce((p, q) => p + q, 0) || 1, v = new Float64Array(12);
+      let nn = 0;
+      for (let k = 0; k < 12; k++) { v[k] = c[k] / t - mean[k]; nn += v[k] * v[k]; }
+      nn = Math.sqrt(nn) || 1;
+      for (let k = 0; k < 12; k++) v[k] /= nn;
+      return v;
+    });
+    // 2) Self-similarity: how much block i sounds like block j.
+    const S = Array.from({ length: nb }, () => new Float64Array(nb));
+    for (let i = 0; i < nb; i++) for (let j = i; j < nb; j++) {
+      let c = 0;
+      for (let k = 0; k < 12; k++) c += unit[i][k] * unit[j][k];
+      S[i][j] = S[j][i] = 0.75 * (c + 1) / 2 + 0.25 * (1 - Math.abs(en[i] - en[j]));
+    }
+    // 3) Boundaries between parts of the song: how different the 8 s after a
+    //    point sound from the 8 s before it (loudness, brightness, harmony).
+    //    8 s spans a whole chord cycle, so chord changes inside a verse average
+    //    out and only a new part of the song stands out.
+    const cs = Array.from(cent).sort((p, q) => p - q);
+    const c0 = cs[Math.floor(nb * 0.1)], c1 = cs[Math.min(nb - 1, Math.floor(nb * 0.95))];
+    const feat = unit.map((u, b) => [2 * en[b], clamp((cent[b] - c0) / Math.max(1e-6, c1 - c0), 0, 1), ...Array.from(u, (v) => 0.5 * v)]);
+    const K = 16, nov = new Float64Array(nb), D = feat[0].length;
+    for (let i = K; i <= nb - K; i++) {
+      let d2 = 0;
+      for (let k = 0; k < D; k++) {
+        let a = 0, b = 0;
+        for (let u = 1; u <= K; u++) { a += feat[i - u][k]; b += feat[i + u - 1][k]; }
+        d2 += ((b - a) / K) ** 2;
+      }
+      nov[i] = Math.sqrt(d2);
+    }
+    const novMax = Math.max(...nov) || 1;
+    // Starts are allowed only where a new part begins: clear local peaks of novelty.
+    const isPeak = (i) => nov[i] >= 0.25 * novMax && nov.slice(Math.max(0, i - 4), i + 5).every((v) => v <= nov[i]);
+    // 4) Repetition of the window's first 16 s (what the viewer hears first):
+    //    best + half of second-best match elsewhere in the song.
+    const L = Math.round(length / B), Lc = Math.min(L, Math.round(16 / B)), last = nb - L;
+    const rep = new Float64Array(last + 1), repLag = [];
+    for (let i = 0; i <= last; i++) {
+      const scores = [];
+      for (let j = 0; j + Lc <= nb; j++) {
+        if (Math.abs(j - i) < Lc) continue;
+        let a = 0;
+        for (let k = 0; k < Lc; k++) a += S[i + k][j + k];
+        scores.push([a / Lc, j]);
+      }
+      scores.sort((p, q) => q[0] - p[0]);
+      const best = scores[0] || [0, -1];
+      const second = scores.find((sc) => Math.abs(sc[1] - best[1]) >= Lc) || [0, -1];
+      rep[i] = best[0] + 0.5 * second[0];
+      repLag.push(scores.filter((sc, idx) => sc[0] >= 0.85 * best[0] && scores.slice(0, idx).every((o) => Math.abs(o[1] - sc[1]) >= Lc)).length);
+    }
+    const rMin = Math.min(...rep), rMax = Math.max(...rep);
+    // 5) Score every possible start.
+    let bestI = 0, bestScore = -1, parts = null;
+    const starts = [];
+    for (let i = 0; i <= last; i++) if (isPeak(i)) starts.push(i);
+    if (!starts.length) for (let i = 0; i <= last; i++) starts.push(i); // a song with no clear parts
+    for (const i of starts) {
+      let e = 0, silent = 0;
+      for (let k = 0; k < L; k++) { e += en[i + k]; if (en[i + k] < 0.12) silent += 1; }
+      e /= L;
+      const r = (rep[i] - rMin) / Math.max(1e-6, rMax - rMin);
+      const fit = 1 - Math.abs(e - target);
+      const bound = nov[i] / novMax;
+      const sc = 0.4 * r + 0.3 * fit + 0.2 * bound + 0.1 * (1 - silent / L);
+      if (sc > bestScore) { bestScore = sc; bestI = i; parts = { repeat: r, fit, boundary: bound, energy: e, repeats: repLag[i] + 1 }; }
+    }
+    // 6) Snap the start onto the song's own beat grid around that point.
+    let start = bestI * B, onBeat = false;
+    const bpm = opts.bpm;
+    if (bpm) {
+      const N = 1024, h = 256, fps = sr2 / h, beat = 60 / bpm;
+      const a0 = Math.max(0, Math.floor((start - 1) * sr2)), a1 = Math.min(n2 - N, Math.floor((start + 8) * sr2));
+      const prev = new Float64Array(N / 2), cur = new Float64Array(N / 2);
+      const on = [];
+      // Flux per bin, low band (kick, bass ≤ 200 Hz) weighted over the rest:
+      // beats, not the hi-hats between them.
+      const lowBins = Math.max(2, Math.ceil(200 / (sr2 / N)));
+      for (let i = a0; i <= a1; i += h) {
+        magSpectrum(y, i, N, cur);
+        let low = 0, all = 0;
+        for (let k = 1; k < N / 2; k++) {
+          const v = Math.log1p(10 * cur[k]), d = v > prev[k] ? v - prev[k] : 0;
+          if (k <= lowBins) low += d; else all += d;
+          prev[k] = v;
+        }
+        on.push(i === a0 ? 0 : low / lowBins + 0.3 * all / (N / 2 - lowBins));
+      }
+      const P = beat * fps;
+      let bestPh = 0, bestOn = -1;
+      for (let ph = 0; ph < P; ph += 1) {
+        let a = 0;
+        for (let k = ph; k < on.length; k += P) a += on[Math.round(k)] || 0;
+        if (a > bestOn) { bestOn = a; bestPh = ph; }
+      }
+      const t0 = a0 / sr2 + bestPh / fps + N / (2 * sr2); // an onset shows when it reaches the frame's centre
+      const kk = Math.round((start - t0) / beat);
+      start = Math.max(0, t0 + kk * beat);
+      onBeat = true;
+    }
+    start = Math.min(start, duration - length);
+    return {
+      start: +start.toFixed(3), end: +(start + length).toFixed(3), length, duration: +duration.toFixed(2), onBeat,
+      target: +target.toFixed(2), energy: +parts.energy.toFixed(2), repeat: +parts.repeat.toFixed(2),
+      repeats: parts.repeats, boundary: +parts.boundary.toFixed(2), fit: +parts.fit.toFixed(2), score: +bestScore.toFixed(3),
+    };
+  }
+
+  /** "1:12", "72", "1m12s", "?t=72" → seconds (or null). */
+  function parseTime(v) {
+    if (v == null || v === '') return null;
+    const str = String(v).trim();
+    let mm;
+    if ((mm = str.match(/^(\d+):(\d{1,2})$/))) return +mm[1] * 60 + +mm[2];
+    if ((mm = str.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/)) && (mm[1] || mm[2] || mm[3])) return (+mm[1] || 0) * 3600 + (+mm[2] || 0) * 60 + (+mm[3] || 0);
+    return null;
+  }
+
   // ------------------------------------------------------- descriptions ---
   const GENRES = {
     jazz: { label: 'джаз / свинг', e: 0.45, v: 0.35, b: 0.45, bpm: 100 },
@@ -268,10 +434,11 @@
     try { u = new URL(url); } catch (e) { return null; }
     const h = u.hostname.replace(/^www\.|^m\./, '');
     let m;
-    if (h === 'youtu.be') return { platform: 'YouTube', open: url, embed: `https://www.youtube.com/embed/${u.pathname.slice(1)}` };
+    const ytStart = parseTime(u.searchParams.get('t') || u.searchParams.get('start'));
+    if (h === 'youtu.be') { const id = u.pathname.slice(1); return { platform: 'YouTube', open: url, embed: `https://www.youtube.com/embed/${id}`, youtube: id, start: ytStart }; }
     if (h.endsWith('youtube.com')) {
       const id = u.searchParams.get('v') || (u.pathname.match(/\/(?:embed|shorts)\/([\w-]+)/) || [])[1];
-      return { platform: h.startsWith('music.') ? 'YouTube Music' : 'YouTube', open: url, embed: id ? `https://www.youtube.com/embed/${id}` : null };
+      return { platform: h.startsWith('music.') ? 'YouTube Music' : 'YouTube', open: url, embed: id ? `https://www.youtube.com/embed/${id}` : null, youtube: id || null, start: ytStart };
     }
     if (h === 'open.spotify.com' && (m = u.pathname.match(/\/(track|album|playlist)\/(\w+)/)))
       return { platform: 'Spotify', open: url, embed: `https://open.spotify.com/embed/${m[1]}/${m[2]}` };
@@ -284,6 +451,11 @@
 
   // ------------------------------------------------------------ browser ---
   async function analyzeFile(blob) {
+    const { mono, sr } = await decodeFile(blob);
+    return analyzeSamples(mono, sr);
+  }
+  /** Decode an audio file to mono samples (kept so the moment can be found too). */
+  async function decodeFile(blob) {
     const buf = await blob.arrayBuffer();
     const Ctx = globalThis.OfflineAudioContext || globalThis.webkitOfflineAudioContext;
     const ctx = new Ctx(1, 1, 44100);
@@ -297,8 +469,8 @@
       const d = audio.getChannelData(c);
       for (let i = 0; i < n; i++) mono[i] += d[i] / ch;
     }
-    return analyzeSamples(mono, audio.sampleRate);
+    return { mono, sr: audio.sampleRate };
   }
 
-  TD.music = { analyzeSamples, analyzeFile, describeSong, combineMusic, parseLink, era, GENRES, TEMPO_HINT };
+  TD.music = { analyzeSamples, analyzeFile, decodeFile, findMoment, parseTime, describeSong, combineMusic, parseLink, era, GENRES, TEMPO_HINT };
 })(globalThis.TD = globalThis.TD || {});

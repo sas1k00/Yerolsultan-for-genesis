@@ -41,6 +41,60 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
 
+  // ------------------------------------------------------- song moment ---
+  const VIDEO_SECS = 30;
+  const fmtTime = (t) => { t = Math.round(t); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+  /** Which part of the song belongs to the day (see TD.music.findMoment). */
+  function songMoment(dec, songIn, design, music) {
+    const link = TD.music.parseLink(songIn.link);
+    const user = TD.music.parseTime(songIn.start);
+    if (dec) {
+      const dur = dec.mono.length / dec.sr;
+      if (user != null) { const st = Math.max(0, Math.min(user, dur - Math.min(VIDEO_SECS, dur))); return { start: st, end: st + Math.min(VIDEO_SECS, dur), length: Math.min(VIDEO_SECS, dur), from: 'user' }; }
+      return { ...TD.music.findMoment(dec.mono, dec.sr, { length: VIDEO_SECS, targetEnergy: design.mood.energy, bpm: music.bpm }), from: 'auto' };
+    }
+    const from = user != null ? 'user' : link && link.start != null ? 'link' : 'default';
+    const start = user != null ? user : link && link.start != null ? link.start : 0;
+    return { start, end: start + VIDEO_SECS, length: VIDEO_SECS, from };
+  }
+  function momentWhy(mo, design) {
+    const pct = (x) => Math.round(x * 100) + ' %';
+    const input = `Момент ${fmtTime(mo.start)}–${fmtTime(mo.end)}`;
+    if (mo.from === 'auto' && mo.short) return { group: 'Песня', input: 'Песня короче видео', rule: 'звучит целиком', result: 'видео идёт под всю песню' };
+    if (mo.from === 'auto') return { group: 'Песня', input,
+      rule: `${mo.repeats >= 2 ? `часть, которая звучит в песне ${mo.repeats} ${mo.repeats < 5 ? 'раза' : 'раз'} (как припев)` : 'самая узнаваемая часть'}; громкость ${pct(mo.energy)} под энергию дня ${pct(design.mood.energy)}; начинается там, где начинается новая часть песни${mo.onBeat ? ', ровно в долю' : ''}`,
+      result: 'видео начинается не со вступления, а с самого узнаваемого места, которое подходит дню' };
+    return { group: 'Песня', input, rule: { user: 'с момента, который вы выбрали', link: 'с момента из ссылки YouTube («Поделиться → Начало»)',
+      default: 'с начала: песню по ссылке браузер не даёт анализировать. Любимый момент можно указать ниже плеера' }[mo.from],
+      result: 'страница и песня играют вместе, этот кусок повторяется по кругу' };
+  }
+
+  // ------------------------------------------------------------ YouTube ---
+  let ytApi = null;
+  function loadYouTube() {
+    if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
+    if (ytApi) return ytApi;
+    ytApi = new Promise((res, rej) => {
+      const prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => { if (prev) prev(); res(window.YT); };
+      const sc = document.createElement('script');
+      sc.src = 'https://www.youtube.com/iframe_api';
+      sc.onerror = () => { ytApi = null; rej(new Error('нет связи с YouTube')); };
+      document.head.appendChild(sc);
+      setTimeout(() => { ytApi = null; rej(new Error('YouTube не ответил')); }, 12000);
+    });
+    return ytApi;
+  }
+  /** Record this tab (Chrome): video cropped to the page of the day, with the tab's sound. */
+  async function captureTab(el) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) throw new Error('браузер не умеет записывать вкладку');
+    toast('Выберите «Эта вкладка» и включите «Поделиться звуком вкладки»', 6000);
+    const st = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true, preferCurrentTab: true, selfBrowserSurface: 'include', systemAudio: 'include' });
+    const [vt] = st.getVideoTracks();
+    if (window.CropTarget && vt && vt.cropTo) { try { await vt.cropTo(await CropTarget.fromElement(el)); } catch (e) { /* records the whole tab */ } }
+    return st;
+  }
+
   // ------------------------------------------------------------ pipeline ---
   async function buildDay(input, log) {
     log('Читаю запись: настроение, место, люди, время суток');
@@ -52,9 +106,9 @@
     const imgs = await Promise.all(photos.map(loadImg));
     const pa = TD.photo.analyzePhotos(imgs);
     log(input.song.file ? 'Слушаю песню: темп, лад, громкость' : 'Читаю описание песни');
-    let audio = null;
+    let audio = null, dec = null;
     if (input.song.file) {
-      try { audio = await TD.music.analyzeFile(input.song.file); } catch (e) { log('Файл не разобрать, беру описание песни'); }
+      try { dec = await TD.music.decodeFile(input.song.file); audio = TD.music.analyzeSamples(dec.mono, dec.sr); } catch (e) { dec = null; log('Файл не разобрать, беру описание песни'); }
     }
     const music = TD.music.combineMusic(audio, input.song);
     log('Применяю правила визуальной системы');
@@ -63,7 +117,10 @@
     const { title, rule } = TD.makeTitle(text, design.mood);
     design.why.push({ group: 'Название', input: 'Место, люди, событие, сезон из текста', rule: `Шаблон «${rule}», 3–7 слов, без глаголов`, result: `«${title}»` });
     const song = { ...input.song };
-    const day = { id, createdAt: Date.now(), date: input.date, rawText: input.text, title, titleRule: rule, caption: text.caption, photos, song, music, analysis: { text, photos: pa, music }, design };
+    if (dec) log('Ищу момент песни, который подходит дню');
+    const moment = songMoment(dec, input.song, design, music);
+    design.why.push(momentWhy(moment, design));
+    const day = { id, createdAt: Date.now(), date: input.date, rawText: input.text, title, titleRule: rule, caption: text.caption, photos, song, music, moment, analysis: { text, photos: pa, music }, design };
     log('Рисую страницу дня');
     const player = TD.render.createPlayer(document.createElement('canvas'), { day, design, images: imgs });
     await player.prepare();
@@ -197,7 +254,7 @@
       try {
         const day = await buildDay({
           date: f.date.value, text: f.text.value.trim(), photos: files, weather: f.weather.value,
-          song: { file: audio, fileName: audio && audio.name, link, artist: f.artist.value.trim(), title: f.title.value.trim(),
+          song: { file: audio, fileName: audio && audio.name, link, start: f.start.value.trim(), artist: f.artist.value.trim(), title: f.title.value.trim(),
             genre: f.genre.value, year: f.year.value ? +f.year.value : null, moodHint: f.moodHint.value, tempoHint: f.tempoHint.value,
             tapBpm: f.dataset.tap ? +f.dataset.tap : null },
         }, log);
@@ -240,15 +297,18 @@
     app.innerHTML = `<div class="day">
       <div class="stage">
         <div class="frame"><canvas aria-label="Анимированная страница дня"></canvas>
-          <button class="play-cover" id="play">▶ Открыть день<span>${s.file ? 'со звуком' : 'песня — в плеере ниже'}</span></button></div>
+          <button class="play-cover" id="play">▶ Открыть день<span>${s.file ? 'со звуком' : link && link.youtube ? 'с песней с YouTube' : 'песня — в плеере ниже'}</span></button></div>
         <div class="controls">
           <button class="btn" id="pp" disabled>❚❚ Пауза</button>
           <button class="btn" id="speak" ${TD.voice.supported ? '' : 'disabled'}>Озвучить запись</button>
           <button class="btn" id="zip">Папка дня .zip</button>
           <button class="btn" id="rec">Записать видео</button>
         </div>
-        ${link ? `<div class="embed">${link.embed ? `<iframe src="${esc(link.embed)}" allow="autoplay; encrypted-media; clipboard-write" loading="lazy" title="Песня дня"></iframe>` : ''}
+        ${link ? `<div class="embed">${link.youtube ? '<div id="yt"></div>' : link.embed ? `<iframe src="${esc(link.embed)}" allow="autoplay; encrypted-media; clipboard-write" loading="lazy" title="Песня дня"></iframe>` : ''}
           <a class="btn btn-ghost" href="${esc(link.open)}" target="_blank" rel="noopener">Открыть песню · ${esc(link.platform)}</a></div>` : ''}
+        ${s.file || (link && link.youtube) ? `<div class="moment"><label>Момент песни <input id="mo-start" size="5" value="${fmtTime((day.moment || {}).start || 0)}" aria-label="С какого места играть песню (мм:сс)"></label>
+          <button class="btn btn-ghost" id="mo-save">Сохранить</button>
+          <span class="lbl-sm" id="mo-from">${{ auto: 'найден автоматически', user: 'выбран вами', link: 'из ссылки', default: 'с начала песни' }[(day.moment || {}).from] || ''}</span></div>` : ''}
       </div>
       <div class="side">
         <div class="date">${fmtDate(day.date)}</div>
@@ -274,12 +334,38 @@
     await player.prepare();
     player.draw(Math.min(D.motion.shotDur * 0.7, 3), { final: true });
 
-    let audio = null, ac = null, gain = null, dest = null;
+    // ---- the song: an audio file or a YouTube player, from the day's moment ----
+    const mo = day.moment || { start: 0, length: null };
+    const momentOpts = () => ({ offset: mo.start || 0, duration: mo.length || undefined, beatOffset: mo.onBeat ? 0 : undefined });
+    let audio = null, ac = null, gain = null, dest = null, yt = null, ytReady = null, loopTimer = 0;
     if (s.file) {
       audio = new Audio();
       audio.src = URL.createObjectURL(s.file); urls.push(audio.src);
-      audio.loop = true; audio.preload = 'auto';
+      audio.loop = !mo.length; audio.preload = 'auto';
+      // The memory loops its own moment of the song, not the whole track.
+      audio.addEventListener('timeupdate', () => { if (mo.length && audio.currentTime >= mo.start + mo.length - 0.05) audio.currentTime = mo.start; });
+    } else if (link && link.youtube) {
+      ytReady = loadYouTube().then((YT) => new Promise((res) => {
+        const p = new YT.Player('yt', { videoId: link.youtube, width: '100%', height: '100%',
+          playerVars: { start: Math.floor(mo.start || 0), playsinline: 1, rel: 0 },
+          events: { onReady: () => { yt = p; res(p); } } });
+      })).catch((err) => {
+        toast(`YouTube не загрузился (${err.message}). Включите песню в плеере вручную.`, 6000);
+        const box = $('#yt');
+        if (box && link.embed) box.outerHTML = `<iframe src="${esc(link.embed)}?start=${Math.floor(mo.start || 0)}" allow="autoplay; encrypted-media" loading="lazy" title="Песня дня"></iframe>`;
+        return null;
+      });
     }
+    // The page's clock follows YouTube's own playback time.
+    const ytClock = { get currentTime() { return yt && yt.getCurrentTime ? yt.getCurrentTime() : 0; }, duration: NaN };
+    const seekAudio = (t) => new Promise((res) => {
+      if (audio.readyState >= 1) { audio.currentTime = t; res(); }
+      else audio.addEventListener('loadedmetadata', () => { audio.currentTime = t; res(); }, { once: true });
+    });
+    const loopYt = () => {
+      clearInterval(loopTimer);
+      if (mo.length) loopTimer = setInterval(() => { if (yt && yt.getCurrentTime() >= mo.start + mo.length) yt.seekTo(mo.start, true); }, 200);
+    };
     const graph = () => {
       if (!audio || ac) return;
       try {
@@ -289,20 +375,53 @@
         if (ac.createMediaStreamDestination) { dest = ac.createMediaStreamDestination(); gain.connect(dest); }
       } catch (e) { ac = null; }
     };
-    const duck = (v) => { if (gain) gain.gain.setTargetAtTime(v, ac.currentTime, 0.25); else if (audio) audio.volume = v; };
+    const duck = (v) => {
+      if (gain) gain.gain.setTargetAtTime(v, ac.currentTime, 0.25); else if (audio) audio.volume = v;
+      if (yt) yt.setVolume(Math.round(v * 100));
+    };
     let playing = false;
     const pp = $('#pp');
     const play = async () => {
-      graph();
-      if (ac && ac.state === 'suspended') await ac.resume();
-      if (audio) { try { await audio.play(); } catch (e) { toast('Не удалось включить звук: ' + e.message); } }
-      if (!playing && pp.dataset.started) player.resume(); else player.start(audio);
+      const first = !pp.dataset.started;
+      if (audio) {
+        graph();
+        if (ac && ac.state === 'suspended') await ac.resume();
+        if (first) await seekAudio(mo.start || 0);
+        try { await audio.play(); } catch (e) { toast('Не удалось включить звук: ' + e.message); }
+      } else if (ytReady) {
+        // playVideo() has to run inside the click, so nothing is awaited first when the player is ready.
+        const p = yt || await ytReady;
+        if (p) { if (first) p.seekTo(mo.start || 0, true); p.playVideo(); loopYt(); }
+      }
+      if (!first && !playing) player.resume(); else player.start(audio || (yt ? ytClock : null), momentOpts());
       pp.dataset.started = 1; playing = true; pp.disabled = false; pp.textContent = '❚❚ Пауза';
       $('#play').hidden = true;
     };
-    const pause = () => { if (audio) audio.pause(); player.pause(); playing = false; pp.textContent = '▶ Играть'; };
+    const pause = () => { if (audio) audio.pause(); if (yt) yt.pauseVideo(); player.pause(); playing = false; pp.textContent = '▶ Играть'; };
     $('#play').onclick = play;
     pp.onclick = () => (playing ? pause() : play());
+    if (ytReady) {
+      // Chrome only lets a click start YouTube with sound if the player is ready at that moment.
+      const cover = $('#play'), label = cover.innerHTML;
+      cover.disabled = true; cover.innerHTML = '… Загружаю YouTube';
+      ytReady.finally(() => { cover.disabled = false; cover.innerHTML = label; });
+    }
+
+    // Change the moment by hand (saved with the day).
+    if ($('#mo-save')) $('#mo-save').onclick = async () => {
+      const t = TD.music.parseTime($('#mo-start').value);
+      if (t == null) return toast('Время в формате 1:12');
+      const len = mo.length || VIDEO_SECS;
+      Object.assign(mo, { start: t, end: t + len, length: len, from: 'user', onBeat: false, short: false });
+      day.moment = mo;
+      const i = D.why.findIndex((w) => w.group === 'Песня');
+      if (i >= 0) D.why[i] = momentWhy(mo, D);
+      await TD.store.put(day);
+      $('#mo-from').textContent = 'выбран вами';
+      delete pp.dataset.started;
+      if (playing) await play();
+      toast(`Песня теперь начинается с ${fmtTime(t)}`);
+    };
 
     $('#speak').onclick = async (e) => {
       const b = e.currentTarget;
@@ -318,31 +437,50 @@
     $('#zip').onclick = async () => { const z = await TD.store.folderZip(day); download(z.blob, z.name); };
     $('#rec').onclick = async (e) => {
       const b = e.currentTarget;
-      if (!window.MediaRecorder || !canvas.captureStream) return toast('Этот браузер не умеет записывать видео с холста');
-      const secs = Math.min(30, audio && isFinite(audio.duration) && audio.duration > 3 ? audio.duration : D.motion.shotDur * Math.max(3, day.photos.length) * 2);
-      graph();
-      const stream = canvas.captureStream(30);
-      if (dest) dest.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
+      if (!window.MediaRecorder) return toast('Этот браузер не умеет записывать видео');
+      const left = audio && isFinite(audio.duration) ? audio.duration - (mo.start || 0) : Infinity;
+      const secs = audio || yt ? Math.min(mo.length || VIDEO_SECS, left > 3 ? left : VIDEO_SECS)
+        : Math.min(VIDEO_SECS, D.motion.shotDur * Math.max(3, day.photos.length) * 2);
+      // YouTube's sound lives in another site's frame: the page cannot record it
+      // directly. Chrome can record this tab with its sound if the user allows.
+      let tab = null;
+      if (yt) {
+        try { tab = await captureTab(canvas); } catch (err) { toast('Видео будет без музыки: ' + err.message, 6000); }
+      }
+      let stream;
+      if (tab) stream = tab;
+      else {
+        if (!canvas.captureStream) return toast('Этот браузер не умеет записывать видео с холста');
+        graph();
+        stream = canvas.captureStream(30);
+        if (dest) dest.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
+      }
       const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'].find((x) => MediaRecorder.isTypeSupported(x));
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 6e6 } : undefined);
       const chunks = [];
       rec.ondataavailable = (ev) => ev.data.size && chunks.push(ev.data);
       const done = new Promise((r) => (rec.onstop = r));
       b.disabled = true;
-      if (audio) audio.currentTime = 0;
-      player.stop(); player.pause();
+      player.stop(); pause(); delete pp.dataset.started;
       await play();
-      player.start(audio);
+      // Soft start and end, like a clip cut from the song.
+      if (gain && ac) {
+        const t = ac.currentTime, g = gain.gain;
+        g.cancelScheduledValues(t); g.setValueAtTime(0.0001, t); g.linearRampToValueAtTime(1, t + 0.6);
+        g.setValueAtTime(1, t + Math.max(0.7, secs - 1.5)); g.linearRampToValueAtTime(0.0001, t + secs);
+      }
       rec.start(250);
       const t0 = Date.now();
       const tick = setInterval(() => (b.textContent = `● Запись ${Math.ceil(secs - (Date.now() - t0) / 1000)} с`), 250);
       await new Promise((r) => setTimeout(r, secs * 1000));
       rec.stop(); await done; clearInterval(tick);
+      if (tab) tab.getTracks().forEach((tr) => tr.stop());
+      if (gain && ac) { gain.gain.cancelScheduledValues(ac.currentTime); gain.gain.setValueAtTime(1, ac.currentTime); }
       const blob = new Blob(chunks, { type: (mime || 'video/webm').split(';')[0] });
       day.video = blob; await TD.store.put(day);
       b.disabled = false; b.textContent = 'Записать видео';
       download(blob, `${day.date}_${TD.store.translit(day.title)}.${blob.type.includes('mp4') ? 'mp4' : 'webm'}`);
-      toast('Видео сохранено в папку дня');
+      toast(tab && !tab.getAudioTracks().length ? 'Видео сохранено, но без звука: в окне выбора не был отмечен звук вкладки' : 'Видео сохранено в папку дня');
     };
     $('#del').onclick = async () => {
       if (!confirm(`Удалить день «${day.title}»? Это нельзя отменить.`)) return;
@@ -350,7 +488,8 @@
     };
 
     cleanup = () => {
-      player.stop(); TD.voice.stop();
+      player.stop(); TD.voice.stop(); clearInterval(loopTimer);
+      if (yt && yt.destroy) yt.destroy();
       if (audio) { audio.pause(); audio.src = ''; }
       if (ac) ac.close();
       urls.forEach((u) => URL.revokeObjectURL(u));
@@ -378,6 +517,7 @@
         <tr><td>Музыка: темп (BPM) и доля</td><td>смена кадров точно в доли (2/4/8 долей на кадр), пульсация форм</td></tr>
         <tr><td>Музыка: мажор / минор</td><td>настроение; минор добавляет 10 % пустого пространства</td></tr>
         <tr><td>Музыка: громкость, ударность</td><td>энергия, сила пульсации</td></tr>
+        <tr><td>Музыка: строение песни</td><td>момент песни на 30 с: повторяющаяся часть (как припев), громкость под энергию дня, начало новой части, ровно в долю; спокойный день получает припев, который переходит в тихую часть</td></tr>
         <tr><td>Музыка: год</td><td>плёночное зерно: до 1970 — 50 %, 70–80-е — 38 %, 90–2000-е — 20 %, после 2010 — 8 %</td></tr></table></div>
       <div class="box"><h2>Названия папок</h2><p>Одна интонация: существительное без глагола, 3–7 слов, с большой буквы, без точки. Шаблоны по порядку: событие + люди («День рождения с друзьями»), время + место + событие («Ночь в офисе перед сдачей»), погода + время + дом + деталь («Дождливый день дома с чаем»), время + место + люди («Вечер в парке с Айгерим»), сезон + место + деталь («Осенний парк и какао»), и запасные.</p></div>
       <div class="box"><h2>Голос</h2><p>У дневника один голос рассказчика, как у его автора. Меняется подача: спокойный день читается медленнее и ниже, с паузами до 0,7 с; насыщенный — быстрее и выше, паузы до 0,2 с. Пока звучит голос, музыка приглушается до 22 %.</p></div>

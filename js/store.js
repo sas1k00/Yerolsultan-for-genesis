@@ -96,7 +96,7 @@
     if (day.video) files.push({ name: dir + `воспоминание.${extOf(day.video, 'webm')}`, data: await bytes(day.video) });
     const v = day.design.voice;
     files.push({ name: dir + 'озвучка.txt', data: enc.encode(`Голос: ${v.label}\nСкорость: ${v.rate}\nВысота: ${v.pitch}\nПаузы между фразами: ${v.pause} мс\n\nБраузер синтезирует голос на лету при открытии дня. Записать его в файл браузер не позволяет.\n\n${day.rawText}\n`) });
-    files.push({ name: dir + 'правила-оформления.json', data: enc.encode(JSON.stringify({ title: day.title, titleRule: day.titleRule, mood: day.design.mood, technique: day.design.technique, techniqueInfo: day.design.techniqueInfo, blend: day.design.blend || null, motion: day.design.motion, texture: day.design.texture, voice: day.design.voice, why: day.design.why }, null, 2)) });
+    files.push({ name: dir + 'правила-оформления.json', data: enc.encode(JSON.stringify({ title: day.title, titleRule: day.titleRule, mood: day.design.mood, technique: day.design.technique, techniqueInfo: day.design.techniqueInfo, blend: day.design.blend || null, songMoment: day.moment || null, motion: day.design.motion, texture: day.design.texture, voice: day.design.voice, why: day.design.why }, null, 2)) });
     return { blob: zip(files), name: `${day.date}_${translit(day.title)}.zip` };
   }
 

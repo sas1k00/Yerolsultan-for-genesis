@@ -115,6 +115,43 @@ test('links: YouTube, youtu.be, Spotify, Яндекс Музыка', () => {
   eq(TD.music.parseLink('not a link'), null);
 });
 
+console.log('The moment of the song (full-length song with a known structure)');
+const { synthSong } = require('./synth-song.js');
+const song = synthSong();
+const near = (t, list, tol) => list.some((c) => Math.abs(t - c) <= tol);
+test('section boundaries are found where the parts of the song begin', () => {
+  // A chorus start is the strongest evidence; every pick must land on one of them.
+  [0.2, 0.5, 0.85].forEach((e) => {
+    const m = TD.music.findMoment(song.x, song.sr, { length: 30, targetEnergy: e, bpm: 120 });
+    ok(near(m.start, song.choruses, 0.06), `energy ${e}: start ${m.start}, choruses at ${song.choruses}`);
+  });
+});
+test('the moment starts exactly on a beat', () => {
+  const m = TD.music.findMoment(song.x, song.sr, { length: 30, targetEnergy: 0.6, bpm: 120 });
+  ok(m.onBeat); const off = (m.start / 0.5) % 1; ok(Math.min(off, 1 - off) * 0.5 < 0.03, 'off the beat by ' + (Math.min(off, 1 - off) * 0.5).toFixed(3) + ' s');
+});
+test('never the quiet intro', () => ok(TD.music.findMoment(song.x, song.sr, { length: 30, targetEnergy: 0.1, bpm: 120 }).start >= 12));
+test('an energetic day gets a louder 30 s than a calm day', () => {
+  const calm = TD.music.findMoment(song.x, song.sr, { length: 30, targetEnergy: 0.1, bpm: 120 });
+  const loud = TD.music.findMoment(song.x, song.sr, { length: 30, targetEnergy: 0.9, bpm: 120 });
+  ok(loud.energy >= calm.energy, `${loud.energy} vs ${calm.energy}`);
+});
+test('the chosen part repeats in the song (like a chorus)', () =>
+  ok(TD.music.findMoment(song.x, song.sr, { length: 30, targetEnergy: 0.6, bpm: 120 }).repeats >= 2));
+test('the moment always fits inside the song', () => {
+  [15, 30, 45, 60].forEach((L) => { const m = TD.music.findMoment(song.x, song.sr, { length: L, targetEnergy: 0.5, bpm: 120 }); ok(m.start >= 0 && m.end <= m.duration + 1e-6, `${L}: ${m.start}–${m.end}`); });
+});
+test('a song shorter than the video plays from the start', () => {
+  const m = TD.music.findMoment(new Float32Array(22 * 16000), 16000, { length: 30 });
+  eq(m.start, 0); ok(m.short);
+});
+test('YouTube start time is read from the link (?t=95, t=1m5s) and from «1:12»', () => {
+  eq(TD.music.parseLink('https://youtu.be/abc123?t=95').start, 95);
+  eq(TD.music.parseLink('https://www.youtube.com/watch?v=abc&t=1m5s').start, 65);
+  eq(TD.music.parseLink('https://www.youtube.com/watch?v=abc').youtube, 'abc');
+  eq(TD.music.parseTime('1:12'), 72); eq(TD.music.parseTime('nonsense'), null);
+});
+
 console.log('Visual system');
 const photo = { count: 2, brightness: 0.5, contrast: 0.2, saturation: 0.3, warmth: 0.1, valence: 0.0, energy: 0.45, palette: [{ rgb: [200, 140, 60], share: 0.5 }, { rgb: [60, 70, 90], share: 0.5 }] };
 const text = TD.analyzeText('Обычный день, гуляли и разговаривали.', '2026-05-10');

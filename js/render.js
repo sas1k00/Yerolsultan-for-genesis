@@ -77,7 +77,7 @@
     const gradeFn = TD.system.makeGrade(D.grade);
     const rand = TD.system.rng(D.seed);
     const n = Math.max(1, images.length);
-    const st = { raf: 0, playing: false, clock: 0, t0: 0, audio: null, onTick: null };
+    const st = { raf: 0, playing: false, clock: 0, t0: 0, audio: null, onTick: null, offset: 0, bo: null };
     let staticLayer, layersBy = {}, grainTile, shapesBy = {}, parts = [];
 
     // Mixed days: every N-th shot replays the previous photo in the second
@@ -92,7 +92,10 @@
     const bgOf = (tech) => (P.windowBgs && P.windowBgs[tech]) || P.windowBg;
     const fadeOf = (tech) => (M.fadeBy && M.fadeBy[tech] != null ? M.fadeBy[tech] : M.fade);
 
-    const beatPhase = (t) => ((t - M.beatOffset) / M.beat) % 1;
+    // Playback can start mid-song (the song's moment): t is time since that
+    // start, so the beat grid is shifted by the same offset.
+    const beatOff = () => (st.bo != null ? st.bo : M.beatOffset - st.offset);
+    const beatPhase = (t) => ((((t - beatOff()) / M.beat) % 1) + 1) % 1;
     const beatEnv = (t) => Math.exp(-((beatPhase(t) + 1) % 1) * 5);
 
     // ------------------------------------------------------- prepare ---
@@ -323,7 +326,7 @@
       const w = WIN.w, h = WIN.h, shapes = shapesBy[tech] || [];
       if (tech === 'geometry') {
         shapes.forEach((s, i) => {
-          const pulse = 1 + M.pulse * 2.2 * Math.exp(-(((t - M.beatOffset) / M.beat + s.off) % 1) * 5);
+          const pulse = 1 + M.pulse * 2.2 * Math.exp(-((((t - beatOff()) / M.beat + s.off) % 1 + 1) % 1) * 5);
           g.save(); g.translate(s.x, s.y); g.rotate(s.rot + t * s.spin * D.mood.energy); g.scale(pulse, pulse);
           g.fillStyle = rgba(s.col, 0.92); g.strokeStyle = rgba(s.col, 0.95);
           if (s.type === 'circle') { g.beginPath(); g.arc(0, 0, s.s * 0.5, 0, Math.PI * 2); g.fill(); }
@@ -524,7 +527,7 @@
     }
 
     function now() {
-      if (st.audio && !isNaN(st.audio.currentTime) && st.audio.currentTime > 0) return st.audio.currentTime;
+      if (st.audio && !isNaN(st.audio.currentTime) && st.audio.currentTime > 0) return st.audio.currentTime - st.offset;
       return st.clock + (st.playing ? (performance.now() - st.t0) / 1000 : 0);
     }
     function loop() {
@@ -535,9 +538,13 @@
 
     return {
       prepare, draw,
-      start(audio) {
+      /** @param audio  anything with currentTime (an <audio>, or a YouTube clock)
+       *  @param opts   {offset: song time of t=0, duration, beatOffset relative to t=0} */
+      start(audio, opts = {}) {
         st.audio = audio || null;
-        st.duration = audio && isFinite(audio.duration) ? audio.duration : null;
+        st.offset = opts.offset || 0;
+        st.bo = opts.beatOffset != null ? opts.beatOffset : null;
+        st.duration = opts.duration || (audio && isFinite(audio.duration) ? audio.duration : null);
         st.t0 = performance.now(); st.playing = true;
         cancelAnimationFrame(st.raf); loop();
       },

@@ -14,7 +14,9 @@ fs.mkdirSync(OUT, { recursive: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
   const errors = [];
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-  page.on('console', (m) => m.type() === 'error' && errors.push('console: ' + m.text()));
+  // Network-level failures (no internet, YouTube blocked) are the environment, not the app:
+  // the app's own files would fail with an HTTP status instead.
+  page.on('console', (m) => m.type() === 'error' && !/net::ERR_/.test(m.text()) && errors.push('console: ' + m.text()));
   await page.goto(URL);
   await page.waitForSelector('#demo');
   const t0 = Date.now();
@@ -69,8 +71,12 @@ fs.mkdirSync(OUT, { recursive: true });
   await page.waitForURL(/#\/day\//, { timeout: 60000 });
   await page.waitForSelector('.side h1');
   const formTitle = await page.textContent('.side h1');
+  // The YouTube area becomes the synced player, or a plain player if YouTube is unreachable.
+  await page.waitForFunction(() => !document.querySelector('#play').disabled, null, { timeout: 20000 });
   const hasEmbed = await page.locator('.embed iframe').count();
-  console.log('form day title:', formTitle, '| youtube embed:', hasEmbed);
+  const momentField = await page.inputValue('#mo-start');
+  console.log('form day title:', formTitle, '| youtube player:', hasEmbed, '| song moment field:', momentField);
+  if (!hasEmbed) errors.push('no YouTube player on a YouTube day');
   if (formTitle !== 'Осенний парк и какао') errors.push('unexpected title from form: ' + formTitle);
   await page.click('#play');
   await page.waitForTimeout(3000);
