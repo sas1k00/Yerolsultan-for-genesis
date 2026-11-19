@@ -56,11 +56,16 @@
           <label>Жанр <select name="genre"></select></label>
           <label>Год <input name="year" type="number" min="1900" max="2100" placeholder="1964"></label>
         </div>
-        <div class="chips-row">
-          <span class="lbl-sm">Песня ощущается</span>
-          <label class="chip"><input type="radio" name="moodHint" value="major"> светлой</label>
-          <label class="chip"><input type="radio" name="moodHint" value="minor"> тёмной</label>
-          <label class="chip"><input type="radio" name="moodHint" value="" checked> не знаю</label>
+        <div class="feel" id="feel">
+          <p class="feel-q"><b>Как звучит эта песня?</b> <span id="feel-why">Два касания, и песня влияет на страницу.</span></p>
+          <div class="feel-row" role="radiogroup" aria-label="Энергия песни">
+            <label class="tap"><input type="radio" name="energyHint" value="calm"><span>Спокойная</span></label>
+            <label class="tap"><input type="radio" name="energyHint" value="energetic"><span>Энергичная</span></label>
+          </div>
+          <div class="feel-row" role="radiogroup" aria-label="Настроение песни">
+            <label class="tap"><input type="radio" name="moodHint" value="major"><span>Светлая</span></label>
+            <label class="tap"><input type="radio" name="moodHint" value="minor"><span>Грустная</span></label>
+          </div>
         </div>
         <div class="chips-row">
           <span class="lbl-sm">Темп</span>
@@ -71,7 +76,7 @@
           <button type="button" class="btn btn-ghost" id="tap">Отстучать ритм</button>
           <span class="tap-out" id="tap-out"></span>
         </div>
-        <p class="hint">С файлом темп и лад находит анализ звука. Со ссылкой песня влияет на оформление через описание или отстуканный ритм. Файл остаётся только в вашей папке дня.</p>
+        <p class="hint">С файлом темп и лад находит анализ звука. Со ссылкой песня влияет на оформление через два ответа выше, описание или отстуканный ритм. Файл остаётся только в вашей папке дня.</p>
       </fieldset>
       <label class="field inline">
         <span class="lbl">Погода <em>(по желанию)</em></span>

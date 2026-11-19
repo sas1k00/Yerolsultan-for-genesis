@@ -141,6 +141,25 @@ test('link-only song uses description and tapped tempo', () => {
   const m = TD.music.combineMusic(null, { genre: 'jazz', year: 1964, tapBpm: 88 });
   eq(m.bpm, 88); eq(m.bpmFrom, 'tap'); eq(m.era.key, 'old');
 });
+test('two taps on a link song: «энергичная» vs «спокойная» changes energy, tempo and the page', () => {
+  const calm = TD.music.combineMusic(null, { energyHint: 'calm', moodHint: 'major' });
+  const loud = TD.music.combineMusic(null, { energyHint: 'energetic', moodHint: 'major' });
+  ok(loud.energy - calm.energy >= 0.4, `${calm.energy} → ${loud.energy}`);
+  ok(loud.bpm > calm.bpm, 'tempo follows the answer when no tempo is given');
+  const t = TD.analyzeText('Гуляли по парку и разговаривали.', '2026-05-10');
+  const ph = { count: 1, brightness: 0.5, contrast: 0.2, saturation: 0.3, warmth: 0, valence: 0, energy: 0.4, palette: [{ rgb: [180, 150, 120], share: 1 }] };
+  const dCalm = TD.system.design({ text: t, photos: ph, music: calm, date: '2026-05-10', id: 'c', rawText: 'a' });
+  const dLoud = TD.system.design({ text: t, photos: ph, music: loud, date: '2026-05-10', id: 'c', rawText: 'a' });
+  ok(dLoud.motion.shotDur < dCalm.motion.shotDur, 'faster montage');
+  ok(dLoud.why.some((w) => /на слух: энергичная/.test(w.rule)), 'the answer is explained');
+});
+test('«светлая / грустная» sets the mood of a link song', () => {
+  ok(TD.music.combineMusic(null, { moodHint: 'major' }).valence > TD.music.combineMusic(null, { moodHint: 'minor' }).valence);
+});
+test('with an audio file, the listener\'s energy counts half and the analysis is kept', () => {
+  const m = TD.music.combineMusic({ bpm: 100, mode: 'major', modeConfidence: 0.6, key: 'C', energy: 0.3, valence: 0.3, brightness: 0.5 }, { energyHint: 'energetic' });
+  eq(m.detectedEnergy, 0.3); ok(Math.abs(m.energy - 0.56) < 0.01, 'energy ' + m.energy);
+});
 test('links: YouTube, youtu.be, Spotify, Яндекс Музыка', () => {
   eq(TD.music.parseLink('https://www.youtube.com/watch?v=abc123').embed, 'https://www.youtube.com/embed/abc123');
   eq(TD.music.parseLink('https://youtu.be/abc123').embed, 'https://www.youtube.com/embed/abc123');

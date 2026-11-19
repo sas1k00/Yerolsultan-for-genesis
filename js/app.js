@@ -215,6 +215,15 @@
     };
     const drop = $('#drop');
     f.photos.onchange = () => addFiles(f.photos.files);
+    // The two taps matter most when the song is only a link: the browser cannot listen to it.
+    const feel = $('#feel'), feelWhy = $('#feel-why');
+    const updateFeel = () => {
+      const file = f.audio.files[0], linkOnly = f.link.value.trim() && !file;
+      feel.classList.toggle('important', !!linkOnly);
+      feelWhy.textContent = linkOnly ? 'Браузер не может послушать песню по ссылке: два касания, и она влияет на страницу.'
+        : file ? 'По желанию: анализ звука это слышит, но ваш ответ главнее.' : 'Два касания, и песня влияет на страницу.';
+    };
+    f.link.addEventListener('input', updateFeel); f.audio.addEventListener('change', updateFeel); updateFeel();
     drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
     drop.ondragleave = () => drop.classList.remove('over');
     drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files); };
@@ -246,6 +255,10 @@
       if (!files.length) return (err.textContent = 'Добавьте хотя бы одно фото дня.');
       if (!audio && !link) return (err.textContent = 'Добавьте песню: ссылку или аудиофайл.');
       if (link && !TD.music.parseLink(link)) return (err.textContent = 'Ссылка на песню выглядит неправильно.');
+      if (link && !audio && !f.energyHint.value && !f.moodHint.value && !feel.dataset.asked) {
+        feel.dataset.asked = 1; feel.classList.add('need'); feel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return (err.textContent = 'Как звучит песня? Два касания выше. Или нажмите «Собрать день» ещё раз, чтобы пропустить.');
+      }
       err.textContent = '';
       f.hidden = true;
       const box = $('#building'); box.hidden = false;
@@ -255,7 +268,7 @@
         const day = await buildDay({
           date: f.date.value, text: f.text.value.trim(), photos: files, weather: f.weather.value,
           song: { file: audio, fileName: audio && audio.name, link, start: f.start.value.trim(), artist: f.artist.value.trim(), title: f.title.value.trim(),
-            genre: f.genre.value, year: f.year.value ? +f.year.value : null, moodHint: f.moodHint.value, tempoHint: f.tempoHint.value,
+            genre: f.genre.value, year: f.year.value ? +f.year.value : null, moodHint: f.moodHint.value, energyHint: f.energyHint.value, tempoHint: f.tempoHint.value,
             tapBpm: f.dataset.tap ? +f.dataset.tap : null },
         }, log);
         location.hash = '#/day/' + encodeURIComponent(day.id);
@@ -316,6 +329,11 @@
         <h1>${esc(day.title)}</h1>
         <div class="box"><h2>Папка дня</h2><div class="hand" style="font-size:24px">📁 ${esc(day.title)}</div>
           <ul class="tree">${tree.map((x) => `<li>${x}</li>`).join('')}</ul></div>
+        ${!s.file && link && !s.energyHint && !s.moodHint ? `<div class="box feel important" id="day-feel"><h2>Как звучит песня?</h2>
+          <p class="hint">Песню по ссылке браузер не может послушать, поэтому она почти не влияет на страницу. Два касания, и день пересоберётся.</p>
+          <div class="feel-row"><button class="tap" data-k="energyHint" data-v="calm" aria-pressed="false">Спокойная</button><button class="tap" data-k="energyHint" data-v="energetic" aria-pressed="false">Энергичная</button></div>
+          <div class="feel-row"><button class="tap" data-k="moodHint" data-v="major" aria-pressed="false">Светлая</button><button class="tap" data-k="moodHint" data-v="minor" aria-pressed="false">Грустная</button></div>
+          <p style="margin:12px 0 0"><button class="btn btn-ink" id="rebuild" disabled>Пересобрать день</button></p></div>` : ''}
         <div class="box"><h2>Запись</h2><p class="entry">${esc(day.rawText)}</p></div>
         <div class="box"><h2>Почему день выглядит так</h2><ul class="why">${D.why.map((w) => `<li><span class="g">${esc(w.group)}</span>
           <span><b>${esc(w.input)}</b> → ${esc(w.rule)}<br><span class="r">${esc(w.result)}</span></span></li>`).join('')}</ul></div>
@@ -436,6 +454,23 @@
       duck(1); delete b.dataset.on; b.textContent = 'Озвучить запись';
     };
     $('#zip').onclick = async () => { const z = await TD.store.folderZip(day); download(z.blob, z.name); };
+    // Two taps on the day page: rebuild the day with the listener's answers.
+    if ($('#day-feel')) {
+      const picked = {};
+      app.querySelectorAll('#day-feel .tap').forEach((btn) => (btn.onclick = () => {
+        picked[btn.dataset.k] = btn.dataset.v;
+        app.querySelectorAll(`#day-feel .tap[data-k="${btn.dataset.k}"]`).forEach((o) => o.setAttribute('aria-pressed', String(o === btn)));
+        $('#rebuild').disabled = false;
+      }));
+      $('#rebuild').onclick = async (e) => {
+        e.currentTarget.disabled = true; e.currentTarget.textContent = 'Собираю…';
+        const song = { ...s, ...picked };
+        if (day.moment && day.moment.from === 'user') song.start = fmtTime(day.moment.start);
+        await buildDay({ id: day.id, date: day.date, text: day.rawText, photos: day.photos, weather: day.analysis.text.weatherFromUser || '', song }, () => {});
+        toast('День пересобран с вашим ответом о песне');
+        route();
+      };
+    }
     $('#rec').onclick = async (e) => {
       const b = e.currentTarget;
       if (!window.MediaRecorder) return toast('Этот браузер не умеет записывать видео');

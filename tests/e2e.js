@@ -65,7 +65,7 @@ fs.mkdirSync(OUT, { recursive: true });
   await page.fill('input[name=title]', 'The Way You Look Tonight');
   await page.selectOption('select[name=genre]', 'jazz');
   await page.fill('input[name=year]', '1964');
-  await page.check('input[name=moodHint][value=major]');
+  await page.click('label.tap:has(input[name=moodHint][value=major])'); // the big button, as a person taps it
   await page.check('input[name=tempoHint][value=slow]');
   await page.click('button[type=submit]');
   await page.waitForURL(/#\/day\//, { timeout: 60000 });

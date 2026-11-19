@@ -91,6 +91,18 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--ink); outli
 .chip { font-size: 14px; border: 1.5px solid var(--line); border-radius: 999px; padding: 5px 12px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
 .chip input { width: auto; margin: 0; }
 .chip:has(input:checked) { border-color: var(--ink); background: var(--paper-2); }
+/* Two taps: how the song feels */
+.feel { margin-top: 14px; padding: 14px; border: 1.5px dashed var(--line); border-radius: 14px; }
+.feel.important { border-style: solid; border-color: var(--ink); }
+.feel.need { box-shadow: 0 0 0 3px var(--accent); }
+.feel-q { margin: 0 0 10px; }
+.feel-q span { opacity: 0.75; font-size: 14px; }
+.feel-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.tap { position: relative; display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 8px 12px; border: 1.5px solid var(--line);
+  border-radius: 12px; cursor: pointer; font: inherit; font-size: 17px; background: transparent; color: inherit; text-align: center; }
+.tap input { position: absolute; inset: 0; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
+.tap:has(input:checked), .tap[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+.tap:has(input:focus-visible), .tap:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .tap-out { font: 13px var(--mono); }
 .form-error { color: var(--accent); min-height: 1em; margin-bottom: 10px; }
 .building { margin-top: 18px; }

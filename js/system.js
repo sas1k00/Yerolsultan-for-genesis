@@ -130,7 +130,7 @@
       : m.source === 'description' ? ' (по описанию)' : ` (${m.key || ''}, уверенность ${pct(m.modeConfidence)})`;
     why.push({
       group: 'Настроение', input: 'Песня',
-      rule: `${m.bpm ? Math.round(m.bpm) + ' BPM' : 'темп не найден'}${m.bpmFrom === 'tap' ? ' (отстучали)' : ''}, ${modeRu}${modeSrc}${m.genreLabel ? ', ' + m.genreLabel : ''}`,
+      rule: `${m.bpm ? Math.round(m.bpm) + ' BPM' : 'темп не найден'}${m.bpmFrom === 'tap' ? ' (отстучали)' : ''}, ${modeRu}${modeSrc}${m.genreLabel ? ', ' + m.genreLabel : ''}${m.energyHint ? `, на слух: ${m.energyHint === 'calm' ? 'спокойная' : 'энергичная'}${m.detectedEnergy != null ? ` (анализ: ${m.detectedEnergy.toFixed(2)})` : ''}` : ''}`,
       result: `настроение ${f2(m.valence)}, энергия ${m.energy.toFixed(2)}`,
     });
     why.push({

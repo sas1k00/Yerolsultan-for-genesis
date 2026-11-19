@@ -385,14 +385,20 @@
     return { key: 'now', label: `${year}: современный звук`, grain: 0.08, fade: 0 };
   }
 
+  // "Спокойная / Энергичная": the listener's own sense of the song's energy.
+  const ENERGY_HINT = { calm: 0.2, energetic: 0.82 };
+
   /** Music features from the user's description (link-only songs). */
   function describeSong(meta) {
     const g = GENRES[meta.genre] || GENRES.other;
-    const bpm = meta.tapBpm || TEMPO_HINT[meta.tempoHint] || g.bpm;
+    let bpm = meta.tapBpm || TEMPO_HINT[meta.tempoHint] || g.bpm;
+    // Without a tempo, "calm" and "energetic" also set a plausible tempo for the montage.
+    if (!meta.tapBpm && !meta.tempoHint && ENERGY_HINT[meta.energyHint] != null) bpm = meta.energyHint === 'calm' ? Math.min(g.bpm, 80) : Math.max(g.bpm, 122);
     const mode = meta.moodHint === 'major' ? 'major' : meta.moodHint === 'minor' ? 'minor' : (g.v >= 0.1 ? 'major' : 'minor');
     const conf = meta.moodHint === 'major' || meta.moodHint === 'minor' ? 0.8 : 0.4;
     const tempoNorm = clamp((bpm - 60) / 100, 0, 1);
-    const energy = clamp(0.5 * tempoNorm + 0.5 * g.e, 0, 1);
+    let energy = clamp(0.5 * tempoNorm + 0.5 * g.e, 0, 1);
+    if (ENERGY_HINT[meta.energyHint] != null) energy = 0.7 * ENERGY_HINT[meta.energyHint] + 0.3 * energy;
     const valence = clamp(0.5 * g.v + (mode === 'major' ? 1 : -1) * 0.4 * conf, -1, 1);
     return {
       source: 'description', bpm, beatOffset: 0, mode, modeConfidence: conf, key: null,
@@ -418,6 +424,12 @@
       }
       m.modeConfidence = Math.max(m.modeConfidence, 0.8);
       m.modeFrom = 'user';
+    }
+    // The listener's "calm / energetic": the whole answer for a link, half of it next to audio analysis.
+    m.energyHint = ENERGY_HINT[meta.energyHint] != null ? meta.energyHint : null;
+    if (m.energyHint) {
+      m.energyFrom = 'user';
+      if (audio && audio.bpm) { m.detectedEnergy = m.energy; m.energy = +(0.5 * m.energy + 0.5 * ENERGY_HINT[m.energyHint]).toFixed(2); }
     }
     m.genre = meta.genre || null;
     m.genreLabel = (GENRES[meta.genre] || {}).label || null;
