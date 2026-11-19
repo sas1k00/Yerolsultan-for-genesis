@@ -30,7 +30,10 @@
     const season = t.season ? L.SEASON[t.season].adj : null;
     const wx = t.weather.find((w) => PRECIP.includes(w));
     const wxAdj = wx ? L.WEATHER[wx].adj : null;
-    const place = t.places[0];
+    const tr = t.travel || {};
+    const dest = tr.destination || null;
+    // A named destination beats "отель" or "бассейн" mentioned before it.
+    const place = dest && dest.loc ? dest : t.places[0];
     const person = t.people[0];
     // A detail that only repeats the season ("осенний … и листья") is skipped.
     const detail = t.details.find((d) => d.season !== t.season) || null;
@@ -41,6 +44,19 @@
     let title = '', timeFirst = false;
     if (event && event.nom && person) {
       title = `${event.nom} ${person.with}`; rule.push('событие + люди');
+    } else if (tr.trip && dest && (dest[tr.trip.prep] || dest.to)) {
+      // «Поездка в Памуккале с братом», «Летний отпуск в Анталье»
+      const where = dest[tr.trip.prep] || dest.to;
+      if (person) { title = `${tr.trip.nom} ${where} ${person.with}`; rule.push('поездка + место + люди'); }
+      else { title = `${adjFor(tr.trip.g)} ${tr.trip.nom} ${where}`; rule.push('сезон + поездка + место'); }
+    } else if (tr.transport && dest && dest.until) {
+      // «Ночь в поезде до Алматы»
+      title = `${timeNoun} ${tr.transport.loc} ${dest.until}`; timeFirst = true; rule.push('время суток + транспорт + куда');
+    } else if (tr.trip && !dest && place && place[tr.trip.prep] && !place.transport) {
+      // «Поездка в горы с друзьями»
+      const where = place[tr.trip.prep];
+      title = person ? `${tr.trip.nom} ${where} ${person.with}` : `${adjFor(tr.trip.g)} ${tr.trip.nom} ${where}`;
+      rule.push(person ? 'поездка + место + люди' : 'сезон + поездка + место');
     } else if (event && place && !place.home) {
       title = `${timeNoun} ${place.loc} ${event.phrase}`; timeFirst = true; rule.push('время суток + место + событие');
     } else if (event) {

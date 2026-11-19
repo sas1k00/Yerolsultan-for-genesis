@@ -44,6 +44,46 @@ test('all demo names: 3–7 words, capital letter, no final punctuation, unique'
   });
 });
 
+console.log('Travel and false friends');
+test('«поездка» is a trip, not a train → «Поездка в Памуккале с братом»', () => {
+  const txt = 'Поездка с братом в Памуккале. Белые травертины, бирюзовая вода, было жарко, мы ходили босиком и смеялись.';
+  const t = TD.analyzeText(txt, '2026-05-14');
+  ok(!t.places.some((p) => p.nom === 'поезд'), 'no train');
+  eq(title(txt, '2026-05-14'), 'Поездка в Памуккале с братом');
+});
+test('known tourist places get the right grammar: «Поездка на Чарын с семьёй»', () =>
+  eq(title('Ездили с семьёй на Чарын. Каньон огромный, красные скалы.', '2026-07-20'), 'Поездка на Чарын с семьёй'));
+test('an unknown capitalised place after «в» is still a place', () =>
+  ok(TD.analyzeText('Весь день гуляли в Гёреме, пили чай.').places.some((p) => p.nom === 'Гёреме' && p.loc === 'в Гёреме')));
+test('transport + destination → «Ночь в поезде до Алматы»', () =>
+  eq(title('Ехали в поезде до Алматы всю ночь, стук колёс, чай в подстаканниках.', '2026-03-10'), 'Ночь в поезде до Алматы'));
+test('false friends: холодильник ≠ cold, защитный крем ≠ defence, крышка ≠ roof', () => {
+  eq(TD.analyzeText('Достала из холодильника жареную картошку.').weather.length, 0);
+  eq(TD.analyzeText('На пляже мазались защитным кремом.').events.length, 0);
+  eq(TD.analyzeText('Уронила крышку от кастрюли.').places.length, 0);
+});
+test('the lexicon is never modified by an analysis', () => {
+  TD.analyzeText('Ехали в поезде до Алматы.');
+  ok(!TD.LEX.GAZETTEER.some((g) => g.until), 'gazetteer entry was written to');
+});
+
+console.log('Reading the day: peak–end');
+const turnDay = 'Утром всё было серо и тревожно, проспала, опоздала на пары. Но вечером мы с Аружан пили кофе на крыше и смеялись до слёз, и день стал хорошим.';
+test('a bad morning that ends well reads as a good day (the end weighs more)', () => {
+  const t = TD.analyzeText(turnDay, '2026-10-01');
+  eq(t.arc.kind, 'rise'); ok(t.valence > 0, 'valence ' + t.valence);
+});
+test('after a turn, the day is remembered as its ending: «Вечер на крыше с Аружан»', () => eq(title(turnDay, '2026-10-01'), 'Вечер на крыше с Аружан'));
+test('the caption is the turning point, not the bad start', () => ok(TD.analyzeText(turnDay).caption.startsWith('Но вечером'), TD.analyzeText(turnDay).caption));
+test('intensifiers are not feelings: «ужасно красиво» is positive', () => ok(TD.analyzeText('Было ужасно красиво.').valence > 0.2));
+test('a first time becomes the caption', () =>
+  eq(TD.analyzeText('Ездили с семьёй на Чарын. Каньон огромный, красные скалы, жара. Впервые ночевали в палатке.').caption, 'Впервые ночевали в палатке.'));
+test('peak and arc are explained on the page', () => {
+  const ph = { count: 1, brightness: 0.5, contrast: 0.2, saturation: 0.3, warmth: 0, valence: 0, energy: 0.4, palette: [{ rgb: [180, 150, 120], share: 1 }] };
+  const d = TD.system.design({ text: TD.analyzeText(turnDay, '2026-10-01'), photos: ph, music: TD.music.combineMusic(null, { genre: 'indie' }), date: '2026-10-01', id: 'p', rawText: turnDay });
+  ok(d.why.some((w) => w.input === 'Ход дня' && /пик и финал/.test(w.result)));
+});
+
 console.log('Music analysis (generated songs with known tempo and key)');
 function readWav(p) {
   const b = fs.readFileSync(p); let o = 12, sr, data;

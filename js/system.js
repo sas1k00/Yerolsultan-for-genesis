@@ -108,6 +108,22 @@
       rule: topWords.length ? `Слова ${topWords.join(', ')}` : 'Эмоциональных слов почти нет',
       result: `настроение ${f2(t.valence)}, энергия ${t.arousal.toFixed(2)}`,
     });
+    // How the day unfolded: peak–end rule.
+    const arc = t.arc || { kind: 'even' };
+    if (t.peak || arc.kind !== 'even') {
+      const arcRu = { rise: 'день стал светлее к концу', fall: 'день потемнел к концу', even: 'день ровный' }[arc.kind];
+      why.push({
+        group: 'Настроение', input: 'Ход дня',
+        rule: [arc.kind !== 'even' ? `начало ${f2(arc.start)} → конец ${f2(arc.end)}: ${arcRu}` : null,
+          arc.turn ? 'поворот на «но / а потом»' : null, t.peak ? `пик — «${t.peak.word}»` : null].filter(Boolean).join('; '),
+        result: 'правило «пик и финал» (Канеман): день помнится по самому сильному моменту и по тому, чем закончился, поэтому они весят больше',
+      });
+    }
+    if (t.firsts && t.firsts.length) why.push({
+      group: 'Настроение', input: 'Впервые',
+      rule: `«${t.firsts[0].slice(0, 60)}${t.firsts[0].length > 60 ? '…' : ''}»`,
+      result: 'первый раз запоминается сильнее: энергия выше, эта фраза в приоритете для подписи',
+    });
     const modeRu = m.mode === 'major' ? 'мажор' : 'минор';
     const modeSrc = m.modeFrom === 'user'
       ? (m.detectedMode && m.detectedMode !== m.mode ? ` (анализ услышал ${m.detectedMode === 'major' ? 'мажор' : 'минор'}, вы поправили)` : ' (совпало с вашей оценкой)')

@@ -8,9 +8,13 @@
   const norm = (s) => s.toLowerCase().replace(/ё/g, 'е');
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
+  // Longer look-alike words ("поездка" for "поезд") never match a shorter stem.
+  const NOT = (L.NOT || []).map(norm);
   function matches(token, pattern) {
     const p = norm(pattern);
-    return p[0] === '=' ? token === p.slice(1) : token.startsWith(p);
+    if (p[0] === '=') return token === p.slice(1);
+    if (!token.startsWith(p)) return false;
+    return !NOT.some((x) => x.length > p.length && x.startsWith(p) && token.startsWith(x));
   }
   function findIn(token, patterns) {
     for (const p of patterns) if (matches(token, p)) return p;
@@ -54,31 +58,72 @@
       places: [], people: [], alone: false, company: false, details: [], events: [], caption: '',
     };
 
-    // ---- mood -----------------------------------------------------------
-    let sv = 0, sa = 0, n = 0;
-    tokens.forEach((tok, i) => {
-      const e = MOOD.find((m) => matches(tok, m.s));
-      if (!e) return;
-      const prev = tokens.slice(Math.max(0, i - 2), i);
-      let mod = 1, note = '';
-      if (prev.some((p) => L.NEGATORS.includes(p))) { mod = -0.6; note = 'отрицание'; }
-      if (prev.some((p) => L.INTENSIFIERS.includes(p))) { mod *= 1.4; note = note || 'усиление'; }
-      if (prev.some((p) => L.SOFTENERS.includes(p))) { mod *= 0.6; note = note || 'смягчение'; }
-      sv += e.v * mod;
-      sa += e.a * (mod < 0 ? 0.8 : Math.min(Math.abs(mod), 1.3));
-      n += 1;
-      res.hits.push({ word: tok, v: +(e.v * mod).toFixed(2), a: e.a, note });
+    // ---- mood: words, weighted by where they stand in the day -------------
+    // Peak–end rule (Kahneman): an experience is remembered by its strongest
+    // moment and by how it ended. So later sentences weigh more, the clause
+    // after "но / а потом / в итоге" weighs more than the one before it, and
+    // the single strongest word weighs extra.
+    const sentences = splitSentences(text);
+    const nS = Math.max(1, sentences.length);
+    const SKIP = new Set([...L.INTENSIFIERS, ...L.SOFTENERS].map(norm));
+    let contrasts = 0, turnAt = -1;
+    const raw = [];
+    sentences.forEach((sent, si) => {
+      const tk = tokenize(sent);
+      // Where does the turn happen in this sentence (token index), if anywhere?
+      let cut = tk.findIndex((tok) => L.CONTRAST.includes(tok));
+      for (const re of L.CONTRAST_PHRASES || []) {
+        const mm = norm(sent).match(re);
+        if (mm) { const at = tokenize(norm(sent).slice(0, mm.index + mm[1].length)).length; cut = cut < 0 ? at : Math.min(cut, at); }
+      }
+      if (cut >= 0) { contrasts += 1; if (turnAt < 0) turnAt = si; }
+      const pos = 0.8 + 0.4 * (si / Math.max(1, nS - 1));
+      tk.forEach((tok, i) => {
+        if (SKIP.has(tok)) return; // "ужасно красиво" is not a sad word
+        const e = MOOD.find((m) => matches(tok, m.s));
+        if (!e) return;
+        const prev = tk.slice(Math.max(0, i - 2), i);
+        let mod = 1, note = '';
+        if (prev.some((p) => L.NEGATORS.includes(p))) { mod = -0.6; note = 'отрицание'; }
+        if (prev.some((p) => L.INTENSIFIERS.includes(p))) { mod *= 1.4; note = note || 'усиление'; }
+        if (prev.some((p) => L.SOFTENERS.includes(p))) { mod *= 0.6; note = note || 'смягчение'; }
+        const turn = cut < 0 ? 1 : i >= cut ? 1.4 : 0.7;
+        raw.push({ word: tok, v: +(e.v * mod).toFixed(2), a: e.a, mod, note, si, w: pos * turn });
+      });
     });
-    res.valence = clamp(sv / (n + 1.5), -1, 1);
+    // A sentence that opens with the turn ("Но вечером…") also quiets everything before it.
+    if (turnAt > 0) raw.forEach((h) => { if (h.si < turnAt) h.w *= 0.8; });
+    let peak = null;
+    raw.forEach((h) => { if (!peak || Math.abs(h.v) * h.w > Math.abs(peak.v) * peak.w) peak = h; });
+    if (peak && Math.abs(peak.v) >= 0.5) peak.w *= 1.5; else peak = null;
+    let sv = 0, swt = 0, sa = 0;
+    raw.forEach((h) => {
+      sv += h.v * h.w; swt += h.w;
+      sa += h.a * (h.mod < 0 ? 0.8 : Math.min(Math.abs(h.mod), 1.3));
+      res.hits.push({ word: h.word, v: h.v, a: h.a, note: h.note });
+    });
+    const n = raw.length;
+    res.valence = clamp(sv / (swt + 1.5), -1, 1);
     let arousal = (sa + 0.35 * 1.5) / (n + 1.5);
     const excl = (text.match(/!/g) || []).length;
     arousal += Math.min(0.2, excl * 0.06);
-    const sentences = splitSentences(text);
-    const avgLen = tokens.length / Math.max(1, sentences.length);
+    const avgLen = tokens.length / nS;
     if (avgLen < 8 && sentences.length > 2) arousal += 0.05;
     if (/\.\.\.|…/.test(text)) arousal -= 0.05;
+    // First-time experiences: the moments a memory keeps.
+    res.firsts = sentences.filter((st) => (L.FIRSTS || []).some((re) => re.test(st)));
+    if (res.firsts.length) arousal += 0.05;
     res.arousal = clamp(arousal, 0, 1);
     res.exclamations = excl;
+    res.contrasts = contrasts;
+    res.peak = peak ? { word: peak.word, v: peak.v, sentence: sentences[peak.si] } : null;
+    // The arc of the day: how the first half felt against the second half.
+    const half = (lo, hi) => { const hs = raw.filter((h) => h.si >= lo && h.si < hi); return hs.length ? hs.reduce((a, h) => a + h.v, 0) / hs.length : null; };
+    const mid = nS > 1 ? Math.ceil(nS / 2) : 1;
+    const a0 = nS > 1 ? half(0, mid) : null, a1 = nS > 1 ? half(mid, nS) : null;
+    const arcD = a0 !== null && a1 !== null ? a1 - a0 : 0;
+    res.arc = { kind: a0 === null || a1 === null ? 'even' : arcD >= 0.45 ? 'rise' : arcD <= -0.45 ? 'fall' : 'even',
+      start: a0 === null ? null : +a0.toFixed(2), end: a1 === null ? null : +a1.toFixed(2), turn: turnAt >= 0 ? sentences[turnAt] : null };
 
     // ---- mixed feelings ---------------------------------------------------
     // Light and dark words are kept apart instead of cancelling out: a farewell
@@ -108,9 +153,14 @@
 
     // ---- time of day ----------------------------------------------------
     const ts = { morning: 0, day: 0, evening: 0, night: 0 };
-    tokens.forEach((tok) => {
-      if (tok === '__night') { ts.night += 2; return; }
-      for (const k in L.TIME) if (findIn(tok, L.TIME[k].m)) { ts[k] += 1; break; }
+    // After a turn ("но вечером…"), time words count double: the day is
+    // remembered as the part it ended in.
+    sentences.forEach((sent, si) => {
+      const wt = turnAt >= 0 && si >= turnAt ? 2 : 1;
+      tokenize(sent).forEach((tok) => {
+        if (tok === '__night') { ts.night += 2 * wt; return; }
+        for (const k in L.TIME) if (findIn(tok, L.TIME[k].m)) { ts[k] += wt; break; }
+      });
     });
     (text.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/g) || []).forEach((hm) => {
       ts[hourBucket(parseInt(hm, 10))] += 1.5;
@@ -142,7 +192,24 @@
     const firstIndex = (patterns) => tokens.findIndex((tok) => findIn(tok, patterns));
     const collect = (list) => list.map((e) => ({ e, i: firstIndex(e.m) })).filter((x) => x.i >= 0)
       .sort((a, b) => a.i - b.i).map((x) => x.e);
-    res.places = collect(L.PLACES);
+    res.places = collect([...(L.GAZETTEER || []), ...L.PLACES]).map((p) => ({ ...p })); // copies: never write into the lexicon
+    // Named places the gazetteer does not know: a capitalised word after
+    // в/на/до/из ("в Памуккале", "на Чарын"). Folder names use the phrase as
+    // written, so no declension is needed.
+    const SKIP_CAP = /^(январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр|понедельник|вторник|сред|четверг|пятниц|суббот|воскресен|нов|рождеств|instagram|telegram|youtube)/;
+    const capRe = /(?:^|[\s,(«"—])(в|во|на|до|из)\s+([А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?)/gi;
+    let cm;
+    while ((cm = capRe.exec(text))) {
+      const prep = cm[1].toLowerCase(), word = cm[2], w = norm(word);
+      if (!/^[А-ЯЁ]/.test(word) || SKIP_CAP.test(w)) continue;
+      const known = res.places.find((p) => p.proper && p.m.some((x) => w.split('-').some((part) => matches(part, x))));
+      if (known) { if (prep === 'до' || prep === 'из') known.until = known.until || `${prep} ${word}`; continue; }
+      let pl = res.places.find((p) => p.guessed && norm(p.nom) === w);
+      if (!pl) { pl = { m: ['=' + w], nom: word, g: 'm', proper: true, guessed: true }; res.places.push(pl); }
+      if (prep === 'до' || prep === 'из') pl.until = pl.until || `${prep} ${word}`;
+      else if (/[еи]$/.test(w)) pl.loc = pl.loc || `${prep} ${word}`; // в Стамбуле / в Памуккале
+      else pl.to = pl.to || `${prep} ${word}`; // в Стамбул / на Чарын
+    }
     res.details = collect(L.DETAILS);
     res.events = collect(L.EVENTS);
     res.people = collect(L.PEOPLE).map((p) => {
@@ -154,6 +221,12 @@
     const named = text.match(/(?:^|[\s,])(с|со)\s+([А-ЯЁA-Z][а-яёa-z]+(?:\s+[А-ЯЁA-Z][а-яёa-z]+)?)/);
     if (named) res.people.unshift({ with: named[1] + ' ' + named[2], name: true });
     res.alone = tokens.some((tok) => findIn(tok, L.ALONE));
+
+    // ---- travel: a trip, its destination and how they got there -----------
+    const trip = (L.TRIP || []).find((tr) => tokens.some((tok) => findIn(tok, tr.m))) || null;
+    const destination = res.places.find((p) => p.proper && (p.loc || p.to || p.until)) || null;
+    const transport = res.places.find((p) => p.transport) || null;
+    res.travel = trip || (destination && transport) ? { trip, destination, transport } : null;
     res.company = res.people.length > 0 || tokens.includes('мы') || tokens.includes('вместе') || tokens.includes('we');
 
     // ---- caption: the most vivid sentence -----------------------------
@@ -168,6 +241,10 @@
         if (L.DETAILS.some((dd) => findIn(tok, dd.m))) score += 0.5;
       });
       if (s.length > 25 && s.length < 140) score += 0.6;
+      if (res.peak && s === res.peak.sentence) score += 0.8; // the strongest moment
+      if (res.arc.kind !== 'even' && idx === sentences.length - 1) score += 0.6; // how the day ended
+      if (res.firsts.includes(s)) score += 0.7; // a first time
+      if (destination && tk.some((tok) => destination.m.some((x) => matches(tok, x)))) score += 0.4;
       score -= idx * 0.05;
       if (score > bestScore) { bestScore = score; best = s; }
     });
