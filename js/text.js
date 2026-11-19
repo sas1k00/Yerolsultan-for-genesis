@@ -21,8 +21,11 @@
     return null;
   }
 
+  // Kazakh letters, so "қуаныш" stays one word and capitalised Kazakh names are found.
+  const KK = 'әғқңөұүһі', UP = 'А-ЯЁӘҒҚҢӨҰҮҺІ', LOW = 'а-яёәғқңөұүһі';
   // Longest matching stem wins ("закричал" before "кричал").
-  const MOOD = L.MOOD.map(([s, v, a]) => ({ s: norm(s), v, a, len: s.replace('=', '').length }))
+  const MOOD = [...L.MOOD.map((e) => [...e, false]), ...(L.MOOD_KK || []).map((e) => [...e, true])]
+    .map(([s, v, a, kk]) => ({ s: norm(s), v, a, kk, len: s.replace('=', '').length }))
     .sort((x, y) => y.len - x.len);
 
   function tokenize(text) {
@@ -30,8 +33,13 @@
     // Phrases rewritten into marker tokens before splitting.
     t = t.replace(/до\s+(\S+\s+)?утра/g, ' __night ')
       .replace(/перв\S*\s+снег/g, ' __first_snow первый снег ')
-      .replace(/(день|дня|дне|днем)\s+рождени\S*|днюх\S*|birthday/g, ' __birthday ');
-    return t.split(/[^a-zа-я0-9_'’]+/i).filter(Boolean);
+      .replace(/(день|дня|дне|днем)\s+рождени\S*|днюх\S*|birthday|туған\s+күн\S*/g, ' __birthday ')
+      .replace(/ата-ана\S*/g, ' __parents ')
+      .replace(/наурыз\s*(мейрам|көже|коже|той)\S*|наурызды\s+тойла\S*|(праздн\S*|на)\s+наурыз\S*/g, ' __nauryz ')
+      .replace(/күн\s+бат\S*/g, ' закат ')
+      // "көңілім жоқ" = not in the mood; "көңілім көтерілді" = my mood lifted
+      .replace(/көңіл\S*\s+жоқ/g, ' көңілсіз ').replace(/көңіл\S*\s+көтеріл\S*/g, ' көңілді ');
+    return t.split(new RegExp(`[^a-z${LOW}0-9_'’]+`, 'i')).filter(Boolean);
   }
 
   function hourBucket(h) {
@@ -84,7 +92,9 @@
         if (!e) return;
         const prev = tk.slice(Math.max(0, i - 2), i);
         let mod = 1, note = '';
-        if (prev.some((p) => L.NEGATORS.includes(p))) { mod = -0.6; note = 'отрицание'; }
+        const next = tk.slice(i + 1, i + 3);
+        const kkNeg = e.kk && e.s[0] !== '=' && L.KK_NEG_SUFFIX && L.KK_NEG_SUFFIX.test(tok.slice(e.s.length));
+        if (prev.some((p) => L.NEGATORS.includes(p)) || kkNeg || next.some((p) => (L.NEGATORS_AFTER || []).includes(p))) { mod = -0.6; note = 'отрицание'; }
         if (prev.some((p) => L.INTENSIFIERS.includes(p))) { mod *= 1.4; note = note || 'усиление'; }
         if (prev.some((p) => L.SOFTENERS.includes(p))) { mod *= 0.6; note = note || 'смягчение'; }
         const turn = cut < 0 ? 1 : i >= cut ? 1.4 : 0.7;
@@ -197,11 +207,11 @@
     // в/на/до/из ("в Памуккале", "на Чарын"). Folder names use the phrase as
     // written, so no declension is needed.
     const SKIP_CAP = /^(январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр|понедельник|вторник|сред|четверг|пятниц|суббот|воскресен|нов|рождеств|instagram|telegram|youtube)/;
-    const capRe = /(?:^|[\s,(«"—])(в|во|на|до|из)\s+([А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?)/gi;
+    const capRe = new RegExp(`(?:^|[\\s,(«"—])(в|во|на|до|из)\\s+([${UP}][${LOW}]+(?:-[${UP}][${LOW}]+)?)`, 'gi');
     let cm;
     while ((cm = capRe.exec(text))) {
       const prep = cm[1].toLowerCase(), word = cm[2], w = norm(word);
-      if (!/^[А-ЯЁ]/.test(word) || SKIP_CAP.test(w)) continue;
+      if (!new RegExp(`^[${UP}]`).test(word) || SKIP_CAP.test(w)) continue;
       const known = res.places.find((p) => p.proper && p.m.some((x) => w.split('-').some((part) => matches(part, x))));
       if (known) { if (prep === 'до' || prep === 'из') known.until = known.until || `${prep} ${word}`; continue; }
       let pl = res.places.find((p) => p.guessed && norm(p.nom) === w);
@@ -218,9 +228,29 @@
       return { with: altKey ? p.alt[altKey] : p.with };
     });
     // "с Айгерим": a capitalised name after "с/со" is kept verbatim.
-    const named = text.match(/(?:^|[\s,])(с|со)\s+([А-ЯЁA-Z][а-яёa-z]+(?:\s+[А-ЯЁA-Z][а-яёa-z]+)?)/);
+    const named = text.match(new RegExp(`(?:^|[\\s,])(с|со)\\s+([${UP}A-Z][${LOW}a-z]+(?:\\s+[${UP}A-Z][${LOW}a-z]+)?)`));
     if (named) res.people.unshift({ with: named[1] + ' ' + named[2], name: true });
+    // Kazakh: "Айгеріммен" = "with Aigerim". A capitalised word + -мен/-бен/-пен that is not a known word.
+    else {
+      const kkRe = new RegExp(`(?:^|[\\s,(«"])([${UP}][${LOW}]{2,}?)(мен|бен|пен)(?![${LOW}])`, 'g');
+      let km;
+      while ((km = kkRe.exec(text))) {
+        const nm = km[1], low = norm(nm), whole = norm(nm + km[2]);
+        const known = L.PEOPLE.some((p) => p.m.some((x) => matches(whole, x) || matches(low, x))) || (L.KK_NOT_NAMES || []).includes(low)
+          || (L.GAZETTEER || []).some((g) => g.m.some((x) => matches(low, x)));
+        if (!known) { res.people.unshift({ with: 'с ' + nm, name: true }); break; }
+      }
+    }
     res.alone = tokens.some((tok) => findIn(tok, L.ALONE));
+    // Which language the entry is in: Kazakh letters or Kazakh words.
+    const isKk = (tok) => new RegExp(`[${KK}]`).test(tok) || MOOD.some((m) => m.kk && matches(tok, m.s));
+    const RU_FUNC = ['и', 'в', 'во', 'на', 'с', 'со', 'не', 'мы', 'я', 'он', 'она', 'они', 'это', 'было', 'был', 'была', 'были', 'очень',
+      'что', 'как', 'по', 'до', 'за', 'но', 'а', 'у', 'к', 'из', 'от', 'так', 'уже', 'всё', 'все', 'весь', 'мне', 'меня', 'нас', 'потом'];
+    const isRu = (tok) => !isKk(tok) && (RU_FUNC.includes(tok) || /(ый|ий|ая|яя|ое|ее|ые|ие|ого|ему|ться|лись)$/.test(tok)
+      || MOOD.some((m) => !m.kk && matches(tok, m.s)));
+    const kkShare = tokens.length ? tokens.filter(isKk).length / tokens.length : 0;
+    const ruShare = tokens.length ? tokens.filter(isRu).length / tokens.length : 0;
+    res.lang = kkShare >= 0.1 && ruShare >= 0.1 ? 'mixed' : kkShare >= 0.3 ? 'kk' : kkShare >= 0.08 ? 'mixed' : 'ru';
 
     // ---- travel: a trip, its destination and how they got there -----------
     const trip = (L.TRIP || []).find((tr) => tokens.some((tok) => findIn(tok, tr.m))) || null;

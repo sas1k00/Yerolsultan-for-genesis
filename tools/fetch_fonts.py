@@ -1,4 +1,4 @@
-"""Download the OFL Google Fonts used by the diary (cyrillic + latin subsets) for offline use."""
+"""Download the OFL Google Fonts used by the diary (cyrillic, cyrillic-ext for Kazakh letters, latin) for offline use."""
 import re, urllib.request, pathlib
 OUT = pathlib.Path(__file__).resolve().parent.parent / "fonts"
 URL = ("https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=IBM+Plex+Mono:wght@400;500"
@@ -8,7 +8,7 @@ css = urllib.request.urlopen(urllib.request.Request(URL, headers=UA)).read().dec
 blocks = re.findall(r"/\* ([\w-]+) \*/\s*(@font-face \{.*?\})", css, re.S)
 out = []
 for subset, block in blocks:
-    if subset not in ("cyrillic", "latin"):
+    if subset not in ("cyrillic", "cyrillic-ext", "latin"):
         continue
     fam = re.search(r"font-family: '([^']+)'", block).group(1).replace(" ", "")
     wt = re.search(r"font-weight: (\d+)", block).group(1)
@@ -17,5 +17,5 @@ for subset, block in blocks:
     name = f"{fam}-{wt}{'i' if st == 'italic' else ''}-{subset}.woff2"
     (OUT / name).write_bytes(urllib.request.urlopen(urllib.request.Request(url, headers=UA)).read())
     out.append(block.replace(url, name))
-(OUT / "fonts.css").write_text("/* Google Fonts (SIL Open Font License), cyrillic + latin subsets */\n" + "\n".join(out) + "\n")
+(OUT / "fonts.css").write_text("/* Google Fonts (SIL Open Font License), cyrillic + cyrillic-ext (Kazakh letters) + latin subsets */\n" + "\n".join(out) + "\n")
 print(len(out), "faces")

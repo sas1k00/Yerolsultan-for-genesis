@@ -289,7 +289,8 @@
       ...t.details.slice(0, 4).map((d) => 'деталь: ' + d.nom),
       t.travel && t.travel.trip && 'поездка: ' + t.travel.trip.nom, t.travel && t.travel.transport && 'транспорт: ' + t.travel.transport.nom,
       t.arc && t.arc.kind === 'rise' && 'день стал светлее к концу', t.arc && t.arc.kind === 'fall' && 'день потемнел к концу',
-      t.firsts && t.firsts.length && 'впервые', ...t.events.slice(0, 2).map((e) => 'событие: ' + e.phrase), t.alone && 'один/одна',
+      t.firsts && t.firsts.length && 'впервые',
+      t.lang === 'kk' && 'язык: казахский', t.lang === 'mixed' && 'язык: казахский и русский', ...t.events.slice(0, 2).map((e) => 'событие: ' + e.phrase), t.alone && 'один/одна',
       m.bpm && Math.round(m.bpm) + ' BPM', m.mode && (m.mode === 'major' ? 'мажор' : 'минор'), m.key && 'тональность ' + m.key,
       'энергия песни ' + m.energy, 'фото: ' + day.photos.length,
     ].filter(Boolean);

@@ -16,7 +16,8 @@
     if (!document.fonts) return Promise.resolve();
     const faces = ['500 40px Caveat', '700 40px Caveat', '500 20px "IBM Plex Mono"', '400 20px "IBM Plex Mono"', '600 40px Oswald',
       '800 40px Rubik', 'italic 400 40px "Cormorant Garamond"'];
-    return Promise.all(faces.map((f) => document.fonts.load(f, 'АаЯя Aa'))).catch(() => {});
+    // Kazakh letters live in a separate font file (cyrillic-ext): load it too.
+    return Promise.all(faces.map((f) => document.fonts.load(f, 'АаЯя ӘәҒғҚқҢңӨөҰұҮүҺһІі Aa'))).catch(() => {});
   }
 
   function coverRect(iw, ih, w, h, zoom = 1, px = 0.5, py = 0.5) {

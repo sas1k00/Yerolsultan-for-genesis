@@ -67,6 +67,40 @@ test('the lexicon is never modified by an analysis', () => {
   ok(!TD.LEX.GAZETTEER.some((g) => g.until), 'gazetteer entry was written to');
 });
 
+console.log('Kazakh and mixed Kazakh–Russian');
+test('Kazakh letters stay inside words', () => eq(TD.textUtil.tokenize('Айгеріммен қуаныштымын').join(' '), 'айгеріммен қуаныштымын'));
+test('pure Kazakh: «День в парке с Айгерім», joyful, language kk', () => {
+  const txt = 'Бүгін Айгеріммен саябақта серуендедік. Күн шуақты болды, балмұздақ жедік, көп күлдік. Өте керемет күн!';
+  const t = TD.analyzeText(txt, '2026-06-12');
+  eq(t.lang, 'kk'); ok(t.valence > 0.3, 'valence ' + t.valence);
+  eq(title(txt, '2026-06-12'), 'День в парке с Айгерім');
+});
+test('Kazakh trip noun and place: «Поездка в Туркестан с семьёй»', () =>
+  eq(title('Отбасыммен Түркістанға сапар. Кесене өте әдемі екен.', '2026-09-05'), 'Поездка в Туркестан с семьёй'));
+test('mixed text: «бірақ кешке» turns the day to evening: «Вечер на Чарыне с братом»', () => {
+  const txt = 'Ағаммен Шарынға бардық. Каньон огромный, было жарко, бірақ кешке өзен жағасында шай іштік, керемет болды.';
+  eq(TD.analyzeText(txt).lang, 'mixed'); eq(title(txt, '2026-07-20'), 'Вечер на Чарыне с братом');
+});
+test('Наурыз is an event: «Наурыз с бабушкой»', () =>
+  eq(title('Наурыз мейрамында әжеммен наурыз көже жасадық, ауылда той болды.', '2026-03-21'), 'Наурыз с бабушкой'));
+test('Kazakh negation: inside the word (қуанбадым) and after it (жақсы емес, уайым жоқ, көңілім жоқ)', () => {
+  ok(TD.analyzeText('Мен қуандым.').valence > 0); ok(TD.analyzeText('Мен қуанбадым.').valence < 0);
+  ok(TD.analyzeText('Бүгін жақсы емес еді.').valence < 0); ok(TD.analyzeText('Уайым жоқ, бәрі тыныш.').valence > 0);
+  ok(TD.analyzeText('Бүгін көңілім жоқ.').valence < 0);
+});
+test('Kazakh false friends: тауық ≠ тау, көлік ≠ көл, жылан ≠ жылау, жарық ≠ жара, жаздым ≠ жаз', () => {
+  eq(TD.analyzeText('Тауық сорпасы ішті.').places.length, 0);
+  eq(TD.analyzeText('Көлікпен келдік.').places[0].nom, 'машина');
+  eq(TD.analyzeText('Жылан көрдім.').hits.length, 0);
+  eq(TD.analyzeText('Жарық сөнді.').weather.length, 0);
+  ok(TD.analyzeText('Хат жаздым.', '2026-01-10').season === 'winter', 'season from the date, not «жаз»');
+});
+test('«Досымның туған күні» is a birthday, and a friend\'s (genitive) is not «с другом»', () => {
+  const t = TD.analyzeText('Досымның туған күні болды, кафеде тойладық, түні бойы биледік!');
+  ok(t.events.some((e) => e.nom === 'день рождения')); eq(t.people.length, 0); eq(t.time, 'night');
+});
+test('Kazakh name inside a Russian sentence: «с Әсел»', () => eq(TD.analyzeText('Гуляли с Әсел по набережной').people[0].with, 'с Әсел'));
+
 console.log('Reading the day: peak–end');
 const turnDay = 'Утром всё было серо и тревожно, проспала, опоздала на пары. Но вечером мы с Аружан пили кофе на крыше и смеялись до слёз, и день стал хорошим.';
 test('a bad morning that ends well reads as a good day (the end weighs more)', () => {
