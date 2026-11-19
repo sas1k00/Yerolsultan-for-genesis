@@ -80,6 +80,21 @@
     res.arousal = clamp(arousal, 0, 1);
     res.exclamations = excl;
 
+    // ---- mixed feelings ---------------------------------------------------
+    // Light and dark words are kept apart instead of cancelling out: a farewell
+    // party ("смеялись" + "прощались") is not a neutral day, it is both at once.
+    let P = 0, N = 0, pa = 0, na = 0;
+    res.hits.forEach((h) => {
+      if (h.v > 0) { P += h.v; pa += h.v * h.a; } else if (h.v < 0) { N -= h.v; na -= h.v * h.a; }
+    });
+    res.pos = +P.toFixed(2);
+    res.neg = +N.toFixed(2);
+    res.posArousal = P ? +(pa / P).toFixed(2) : 0.35;
+    res.negArousal = N ? +(na / N).toFixed(2) : 0.35;
+    // 0 = one feeling, 1 = two equally strong feelings. Needs about one clearly
+    // emotional word on each side, so a stray "холодно" or "тишина" is not "mixed".
+    res.mixed = Math.min(P, N) >= 0.5 ? +(2 * Math.min(P, N) / (P + N) * clamp((P + N) / 1.6, 0, 1)).toFixed(3) : 0;
+
     // ---- warmth & senses -----------------------------------------------
     let sw = 0, nw = 0, ns = 0;
     tokens.forEach((tok) => {

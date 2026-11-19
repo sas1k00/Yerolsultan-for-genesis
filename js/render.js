@@ -78,7 +78,19 @@
     const rand = TD.system.rng(D.seed);
     const n = Math.max(1, images.length);
     const st = { raf: 0, playing: false, clock: 0, t0: 0, audio: null, onTick: null };
-    let staticLayer, layers = [], grainTile, shapes = [], parts = [];
+    let staticLayer, layersBy = {}, grainTile, shapesBy = {}, parts = [];
+
+    // Mixed days: every N-th shot replays the previous photo in the second
+    // technique (the same moment remembered with the other feeling).
+    const B = D.blend || {};
+    const SEC = B.secondary && B.every ? B.secondary : null;
+    function slot(k) {
+      if (!SEC) return { tech: D.technique, img: k % n };
+      const E = B.every, block = Math.floor(k / E), pos = k % E, inter = pos === E - 1;
+      return { tech: inter ? SEC : D.technique, img: (block * (E - 1) + (inter ? pos - 1 : pos)) % n };
+    }
+    const bgOf = (tech) => (P.windowBgs && P.windowBgs[tech]) || P.windowBg;
+    const fadeOf = (tech) => (M.fadeBy && M.fadeBy[tech] != null ? M.fadeBy[tech] : M.fade);
 
     const beatPhase = (t) => ((t - M.beatOffset) / M.beat) % 1;
     const beatEnv = (t) => Math.exp(-((beatPhase(t) + 1) % 1) * 5);
@@ -124,7 +136,9 @@
       const facts = [m.bpm ? Math.round(m.bpm) + ' BPM' : null, m.mode === 'major' ? 'мажор' : m.mode === 'minor' ? 'минор' : null, m.genreLabel, day.song && day.song.year].filter(Boolean);
       g.fillText(facts.join(' · '), 60, y0 + 38);
       const lab = [D.labels.season, D.labels.time, ...(D.labels.weather || [])].filter(Boolean);
-      g.fillText((lab.join(' · ') + '  /  ' + D.techniqueInfo.name.toLowerCase()).slice(0, 60), 60, y0 + 74);
+      const techStr = (D.techniqueInfo.name + (SEC ? ' + ' + B.secondaryInfo.name : '')).toLowerCase();
+      while (lab.length && (lab.join(' · ') + '  /  ' + techStr).length > 58) lab.pop();
+      g.fillText(((lab.length ? lab.join(' · ') + '  /  ' : '') + techStr).slice(0, 60), 60, y0 + 74);
       // "печать дня": the same seal on every page, the dot moves with mood
       const cx = W - 140, cy = H - 165, r = 70;
       g.strokeStyle = rgba(ink, 0.8); g.lineWidth = 2;
@@ -196,26 +210,27 @@
     function buildCutout(img) { return { photo: graded(img, WIN.w * 0.75, WIN.h * 0.75, gradeFn) }; }
     function buildMa(img) { return { photo: graded(img, WIN.w * 0.7, WIN.h * 0.7, gradeFn) }; }
 
-    function buildShapes() {
+    function buildShapes(tech) {
+      const out = [];
       const r = TD.system.rng(D.seed + 7);
       const [ah, as] = rgb2hsl(P.accent);
       const triad = [P.accent, hsl2rgb([ah + 120, clamp(as, 0.55, 0.85), 0.55]), hsl2rgb([ah + 240, clamp(as, 0.55, 0.85), 0.5])];
-      if (D.technique === 'geometry') {
+      if (tech === 'geometry') {
         const cols = [...triad, [236, 230, 214], [12, 12, 16]];
         const count = Math.round(7 + 10 * D.mood.energy);
         const types = ['circle', 'ring', 'line', 'tri', 'semi', 'grid', 'line', 'circle', 'checker'];
-        for (let i = 0; i < count; i++) shapes.push({
+        for (let i = 0; i < count; i++) out.push({
           type: types[Math.floor(r() * types.length)], x: Math.round(r() * 12) / 12 * WIN.w, y: Math.round(r() * 16) / 16 * WIN.h,
           s: 30 + r() * 170, col: cols[Math.floor(r() * cols.length)], rot: r() * Math.PI * 2, spin: (r() - 0.5) * 0.4,
           off: r() < 0.5 ? 0 : 0.5, len: 400 + r() * 900,
         });
-      } else if (D.technique === 'cutout') {
-        const bgH = rgb2hsl(P.windowBg)[0];
+      } else if (tech === 'cutout') {
+        const bgH = rgb2hsl(bgOf('cutout'))[0];
         const cols = [...triad.filter((c) => Math.abs(((rgb2hsl(c)[0] - bgH + 540) % 360) - 180) > 40), [250, 246, 238], [30, 30, 40], ...P.colors.filter((c) => rgb2hsl(c)[1] > 0.4)];
         const count = Math.round(5 + 6 * D.mood.energy);
         for (let i = 0; i < count; i++) {
           const edge = r() < 0.75;
-          shapes.push({
+          out.push({
             type: r() < 0.6 ? 'leaf' : 'dot', lobes: 3 + Math.floor(r() * 5),
             x: edge ? (r() < 0.5 ? r() * 0.25 : 0.75 + r() * 0.25) * WIN.w : r() * WIN.w, y: r() * WIN.h,
             s: 50 + r() * 130, col: cols[Math.floor(r() * cols.length)] || [250, 246, 238], rot: r() * Math.PI * 2,
@@ -223,6 +238,7 @@
           });
         }
       }
+      return out;
     }
 
     function buildParticles() {
@@ -240,27 +256,31 @@
       await fontsReady();
       staticLayer = buildStatic();
       grainTile = buildGrain();
-      layers = images.map((img, i) => (D.technique === 'brush' ? buildBrush(img, i) : D.technique === 'geometry' ? buildGeometry(img)
-        : D.technique === 'cutout' ? buildCutout(img) : buildMa(img)));
-      if (!layers.length) layers = [null];
-      buildShapes();
+      (SEC ? [D.technique, SEC] : [D.technique]).forEach((tech) => {
+        layersBy[tech] = images.map((img, i) => (tech === 'brush' ? buildBrush(img, i) : tech === 'geometry' ? buildGeometry(img)
+          : tech === 'cutout' ? buildCutout(img) : buildMa(img)));
+        if (!layersBy[tech].length) layersBy[tech] = [null];
+        shapesBy[tech] = buildShapes(tech);
+      });
       buildParticles();
     }
 
     // ------------------------------------------------------------ shots ---
-    function drawShot(g, k, t, sp, alpha) {
-      const L = layers[k % layers.length], img = images[k % images.length];
+    function drawShot(g, k, t, sp, alpha, fillBg) {
+      const { tech, img: idx } = slot(k);
+      const ls = layersBy[tech], L = ls[idx % ls.length], img = images[idx % Math.max(1, images.length)];
       if (!L) return;
       const w = WIN.w, h = WIN.h;
       g.save();
       g.globalAlpha = alpha;
-      if (D.technique === 'brush') {
+      if (fillBg) { g.fillStyle = rgba(bgOf(tech), 1); g.fillRect(0, 0, w, h); }
+      if (tech === 'brush') {
         const z = 1 + M.zoom * sp, A = L.variants[0], B = L.variants[1];
         g.translate(w / 2, h / 2); g.scale(z, z); g.translate(-w / 2, -h / 2);
         g.drawImage(A, 0, 0);
         g.globalAlpha = alpha * (0.5 + 0.5 * Math.sin(t * Math.PI * 2 / (M.beat * 8)));
         g.drawImage(B, 0, 0);
-      } else if (D.technique === 'geometry') {
+      } else if (tech === 'geometry') {
         const lay = k % 3, src = L.duo;
         const z = 1 + M.zoom * sp;
         g.save();
@@ -272,7 +292,7 @@
         const rr = coverRect(src.width, src.height, w, h, z);
         g.drawImage(src, rr.x, rr.y, rr.w, rr.h);
         g.restore();
-      } else if (D.technique === 'cutout') {
+      } else if (tech === 'cutout') {
         const r = TD.system.rng(D.seed + k * 31);
         const cx = w * (0.42 + r() * 0.16), cy = h * (0.38 + r() * 0.08);
         const R = w * (0.42 - 0.12 * D.air);
@@ -299,9 +319,9 @@
       g.restore();
     }
 
-    function drawShapes(g, t, sp) {
-      const w = WIN.w, h = WIN.h;
-      if (D.technique === 'geometry') {
+    function drawShapes(g, t, sp, tech, within) {
+      const w = WIN.w, h = WIN.h, shapes = shapesBy[tech] || [];
+      if (tech === 'geometry') {
         shapes.forEach((s, i) => {
           const pulse = 1 + M.pulse * 2.2 * Math.exp(-(((t - M.beatOffset) / M.beat + s.off) % 1) * 5);
           g.save(); g.translate(s.x, s.y); g.rotate(s.rot + t * s.spin * D.mood.energy); g.scale(pulse, pulse);
@@ -315,7 +335,7 @@
           else { for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) if ((a + b) % 2 === 0) g.fillRect(a * 22 - 33, b * 22 - 33, 22, 22); }
           g.restore();
         });
-      } else if (D.technique === 'cutout') {
+      } else if (tech === 'cutout') {
         shapes.forEach((s) => {
           const bounce = M.pulse * 160 * s.depth * Math.exp(-beatPhase(t) * 4);
           const rot = s.rot + (M.sway * Math.PI / 180) * Math.sin(t * Math.PI * 2 / (M.beat * 2) + s.ph);
@@ -334,10 +354,10 @@
           path(); g.fillStyle = rgba(s.col, 1); g.fill();
           g.restore();
         });
-      } else if (D.technique === 'ma') {
+      } else if (tech === 'ma') {
         const y = h * 0.78;
         g.strokeStyle = rgba(P.ink, 0.7); g.lineWidth = 2;
-        const l = w * 0.84 * ease(t / (M.shotDur * 0.8));
+        const l = w * 0.84 * ease((tech === D.technique ? t : within) / (M.shotDur * 0.8));
         g.beginPath(); g.moveTo(w * 0.08, y); g.lineTo(w * 0.08 + l, y); g.stroke();
         const red = rgb2hsl(P.accent)[1] > 0.45 && Math.abs(((rgb2hsl(P.accent)[0] + 180) % 360) - 180) < 40 ? P.accent : [190, 58, 42];
         g.fillStyle = rgba(red, 0.9);
@@ -347,9 +367,10 @@
       }
     }
 
-    function drawParticles(g, t) {
+    function drawParticles(g, t, tech) {
       const w = WIN.w, h = WIN.h, kind = TX.particles;
-      if (!kind) return;
+      // Weather stays all day; celebration confetti stops during a Ma pause.
+      if (!kind || (kind === 'confetti' && tech === 'ma')) return;
       parts.forEach((p) => {
         if (kind === 'snow') {
           const y = (p.y + t * 40 * p.sp) % (h + 20) - 10, x = p.x + Math.sin(t * 0.8 + p.ph) * 14;
@@ -375,7 +396,7 @@
       });
     }
 
-    function drawCaption(g, t, final) {
+    function drawCaption(g, t, final, tech) {
       const text = (day.caption || '').trim();
       if (!text) return;
       const ty = D.typo, w = WIN.w, h = WIN.h;
@@ -434,9 +455,16 @@
         });
       } else {
         const y0 = h * 0.78 + 70;
+        // Ma's caption has no plate of its own; on a busy interlude shot it gets
+        // a soft paper backing so it stays readable.
+        if (tech !== 'ma' && tech !== 'geometry') {
+          const bw = Math.max(...lines.map((l) => g.measureText(l).width)) + 48;
+          g.fillStyle = rgba(P.paper, 0.82 * clamp(tt / (M.beat * 3), 0, 1));
+          g.fillRect(w * 0.08 - 24, y0 - ty.size - 8, bw, lines.length * lh + 30);
+        }
         lines.forEach((l, i) => {
           const a = clamp((tt - i * M.beat * 4) / (M.beat * 3), 0, 1);
-          g.fillStyle = rgba(P.ink, 0.88 * a); g.fillText(l, w * 0.08, y0 + i * lh);
+          g.fillStyle = rgba(tech === 'geometry' ? P.paper : P.ink, 0.88 * a); g.fillText(l, w * 0.08, y0 + i * lh);
         });
       }
       g.restore();
@@ -452,12 +480,14 @@
       ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
       ctx.fillStyle = rgba(P.windowBg, 1); ctx.fillRect(0, 0, w, h);
       const shot = Math.floor(t / M.shotDur), within = t - shot * M.shotDur, sp = within / M.shotDur;
-      if (M.fade > 0 && shot > 0 && within < M.fade) {
-        drawShot(ctx, shot - 1, t, 1, 1);
-        drawShot(ctx, shot, t, sp, ease(within / M.fade));
-      } else drawShot(ctx, shot, t, sp, 1);
-      drawShapes(ctx, t, sp);
-      drawParticles(ctx, t);
+      // Each shot comes in with its own technique's transition.
+      const cur = slot(shot).tech, prev = shot > 0 ? slot(shot - 1).tech : cur, fadeIn = fadeOf(cur);
+      if (fadeIn > 0 && shot > 0 && within < fadeIn) {
+        drawShot(ctx, shot - 1, t, 1, 1, prev !== D.technique);
+        drawShot(ctx, shot, t, sp, ease(within / fadeIn), cur !== prev || cur !== D.technique);
+      } else drawShot(ctx, shot, t, sp, 1, cur !== D.technique);
+      drawShapes(ctx, t, sp, cur, within);
+      drawParticles(ctx, t, cur);
       if (TX.leak) {
         const a = TX.leak * (0.8 + 0.2 * Math.sin(t * 0.7));
         const gr = ctx.createRadialGradient(w * 0.95, h * 0.05, 0, w * 0.95, h * 0.05, w * 0.9);
@@ -469,8 +499,8 @@
         gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, `rgba(0,0,0,${TX.vignette})`);
         ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h);
       }
-      if (M.fade === 0 && shot > 0 && within < 0.09) { ctx.fillStyle = `rgba(255,255,255,${0.35 * (1 - within / 0.09)})`; ctx.fillRect(0, 0, w, h); }
-      drawCaption(ctx, t, o.final);
+      if (fadeIn === 0 && shot > 0 && within < 0.09) { ctx.fillStyle = `rgba(255,255,255,${0.35 * (1 - within / 0.09)})`; ctx.fillRect(0, 0, w, h); }
+      drawCaption(ctx, t, o.final, cur);
       if (TX.grain > 0) {
         const f = Math.floor(t * 12), ox = (f * 73) % 256, oy = (f * 151) % 256;
         ctx.globalAlpha = TX.grain * 0.55; ctx.globalCompositeOperation = 'overlay';

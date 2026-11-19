@@ -115,6 +115,53 @@ test('all four techniques are reachable', () => {
   eq(seen.size, 4);
 });
 
+console.log('Mixed feelings and soft borders');
+const designFor = (txt, song, id = 'm') => TD.system.design({ text: TD.analyzeText(txt, '2026-06-01'), photos: photo,
+  music: TD.music.combineMusic(null, song), date: '2026-06-01', id, rawText: txt });
+const happySong = { genre: 'pop', tempoHint: 'fast', moodHint: 'major' };
+test('farewell party: joy and sadness in the text → Matisse with Ma pauses', () => {
+  const t = TD.analyzeText('Провожали Дану в Сеул. Танцевали, смеялись до слёз, было весело. А потом обнимались у такси, и стало очень грустно.');
+  ok(t.mixed > 0.5, 'mixed ' + t.mixed);
+  const d = designFor('Провожали Дану в Сеул. Танцевали, смеялись до слёз, было весело. А потом обнимались у такси, и стало очень грустно.', happySong);
+  eq(d.technique, 'cutout'); eq(d.blend.secondary, 'ma'); eq(d.blend.from, 'text');
+  ok(d.why.some((w) => w.input === 'Смешанные чувства'), 'mixed feelings explained');
+});
+test('pure joy stays one clean technique', () => {
+  const d = designFor('Сдала экзамен! Весь день смеялись с друзьями, танцевали, было весело и счастливо.', happySong);
+  eq(d.blend.secondary, null); eq(d.blend.every, 0);
+});
+test('one stray word does not make a day mixed («было холодно» in a happy day)', () =>
+  eq(TD.analyzeText('Было холодно, но мы смеялись весь вечер и было очень весело и тепло.').mixed, 0));
+test('happy text with a sad song → the song brings the second feeling', () => {
+  const d = designFor('Гуляли с друзьями, смеялись, ели мороженое, было весело.', { genre: 'ambient', tempoHint: 'slow', moodHint: 'minor' });
+  eq(d.blend.from, 'music'); ok(d.blend.secondary === 'ma' || d.blend.secondary === 'geometry', d.blend.secondary);
+});
+test('the second feeling never takes over the main technique', () => {
+  for (const v of [-0.6, -0.1, 0.1, 0.6]) for (const e of [0.2, 0.8]) {
+    const t2 = { ...text, valence: v, arousal: e, mixed: 1, posArousal: 0.2, negArousal: 0.2,
+      hits: [{ word: 'весело', v: 0.8, a: 0.2 }, { word: 'грустно', v: -0.8, a: 0.2 }] };
+    const d = TD.system.design({ text: t2, photos: { ...photo, valence: v, energy: e }, music: { ...slowMinor, valence: v, energy: e }, date: '2026-05-10', id: 'z', rawText: 'c' });
+    const quad = d.mood.energy >= 0.5 ? (d.mood.valence >= 0 ? 'cutout' : 'geometry') : (d.mood.valence >= 0 ? 'brush' : 'ma');
+    eq(d.technique, quad, `v=${v} e=${e}`);
+  }
+});
+test('no cliff at the border: energy 0.49 and 0.51 both show both techniques', () => {
+  const at = (e) => {
+    const t2 = { ...text, valence: 0.5, arousal: e, mixed: 0 };
+    return TD.system.design({ text: t2, photos: { ...photo, valence: 0.5, energy: e }, music: { ...fastMajor, valence: 0.5, energy: e }, date: '2026-05-10', id: 'b', rawText: 'd' });
+  };
+  const lo = at(0.49), hi = at(0.51);
+  const set = (d) => [d.technique, d.blend.secondary].sort().join('+');
+  eq(set(lo), set(hi)); eq(set(lo), 'brush+cutout');
+  ok(Math.abs(lo.grade.satMul - hi.grade.satMul) < 0.05, 'saturation must not jump');
+});
+test('mixed days: interlude shots and transitions exist for both techniques', () => {
+  const d = designFor('Провожали Дану в Сеул. Танцевали, смеялись до слёз, было весело. А потом обнимались у такси, и стало очень грустно.', happySong);
+  ok(d.blend.every >= 3 && d.blend.every <= 5, 'every ' + d.blend.every);
+  ok(d.palette.windowBgs.cutout && d.palette.windowBgs.ma, 'window backgrounds');
+  ok(d.motion.fadeBy.ma > d.motion.fadeBy.cutout, 'Ma fades in slower than cut-outs');
+});
+
 console.log('Storage helpers');
 test('zip CRC-32 of "123456789" is CBF43926', () => eq(TD.store.crc32(new TextEncoder().encode('123456789')).toString(16).toUpperCase(), 'CBF43926'));
 test('ASCII file name for downloads', () => eq(TD.store.translit('Ночь в офисе перед сдачей'), 'noch-v-ofise-pered-sdachey'));

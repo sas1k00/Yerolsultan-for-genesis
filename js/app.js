@@ -117,7 +117,7 @@
         if (m !== month) { html += `${month ? '</div>' : ''}<div class="month">${m}</div><div class="grid">`; month = m; }
         html += `<a class="folder" href="#/day/${encodeURIComponent(d.id)}"><div class="tab"></div><div class="body">
           <img src="${d.cover}" alt="Страница дня «${esc(d.title)}»" loading="lazy"><div class="name">${esc(d.title)}</div>
-          <div class="meta">${fmtDate(d.date)} · ${esc(d.design.techniqueInfo.name)}</div></div></a>`;
+          <div class="meta">${fmtDate(d.date)} · ${esc(d.design.techniqueInfo.name)}${d.design.blend && d.design.blend.secondary ? ' + ' + esc(d.design.blend.secondaryInfo.name) : ''}</div></div></a>`;
       });
       $('#list').innerHTML = shown.length ? html + '</div>' : '<p class="lede">Ничего не нашлось.</p>';
     };

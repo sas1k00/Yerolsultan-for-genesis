@@ -21,23 +21,36 @@
       name: 'Мазки света', ref: 'Клод Моне, импрессионизм',
       when: 'спокойный и светлый день',
       why: 'Короткие мазки растворяют контуры: день вспоминается как свет, тепло и воздух, а не как детали.',
+      interlude: 'вспышка тёплого света: кадр переписан мазками, как хорошее воспоминание',
     },
     geometry: {
       name: 'Напряжённая геометрия', ref: 'Василий Кандинский, «Композиция VIII»',
       when: 'насыщенный и напряжённый день',
       why: 'Острые углы, жёсткие линии, контраст и резкий монтаж по долям передают давление, скорость и собранность.',
+      interlude: 'укол напряжения: жёсткая геометрия и склейка точно в долю',
     },
     cutout: {
       name: 'Вырезки', ref: 'Анри Матисс, гуаши-вырезки',
       when: 'яркий и радостный день',
       why: 'Плоские чистые цвета и пляшущие органические формы передают радость, движение и лёгкость.',
+      interlude: 'всплеск радости: вырезки подпрыгивают в долю, как внезапный смех',
     },
     ma: {
       name: 'Ма — пустота', ref: 'японская минималистичная графика, ваби-саби',
       when: 'тихий и грустный день',
       why: 'Много пустого места, приглушённый цвет и медленные растворения дают дню паузу: грусть без драмы.',
+      interlude: 'пауза: пустой лист, маленький приглушённый кадр и печать, как тихая грусть',
     },
   };
+  const ORDER = ['brush', 'geometry', 'cutout', 'ma'];
+  const FADE = { brush: 0.45, ma: 0.55, cutout: 0.08, geometry: 0 };
+  const quadrant = (v, e) => (e >= 0.5 ? (v >= 0 ? 'cutout' : 'geometry') : (v >= 0 ? 'brush' : 'ma'));
+  const sigmoid = (x) => 1 / (1 + Math.exp(-x));
+  // How soft the borders are: a day 0.08 of energy (or 0.12 of mood) past the
+  // middle is ~73 % one technique. Far from the middle the day stays pure.
+  const SOFT_E = 0.08, SOFT_V = 0.12;
+  // A second technique is shown when it has at least this share of the first.
+  const SECOND_MIN = 0.4;
 
   const PAPER = [242, 236, 225];
   const INK = [42, 36, 32];
@@ -115,20 +128,75 @@
       result: `настроение ${f2(valence)}, энергия ${energy.toFixed(2)}`,
     });
 
-    // ---- 2. technique ---------------------------------------------------
-    const technique = energy >= 0.5 ? (valence >= 0 ? 'cutout' : 'geometry') : (valence >= 0 ? 'brush' : 'ma');
+    // ---- 2. technique: soft borders + mixed feelings ---------------------
+    // a) Soft borders. Each technique gets a share instead of a hard 2×2 box,
+    //    so energy 0.49 and 0.51 are no longer two different worlds.
+    const hiE = sigmoid((energy - 0.5) / SOFT_E), bright = sigmoid(valence / SOFT_V);
+    const soft = { cutout: hiE * bright, geometry: hiE * (1 - bright), brush: (1 - hiE) * bright, ma: (1 - hiE) * (1 - bright) };
+    // b) Mixed feelings. Either the text holds light and dark at once, or the
+    //    song pulls the opposite way from the text. The "other" feeling gets a
+    //    technique of its own, chosen by how loud that feeling is.
+    const textMix = t.mixed || 0;
+    const cross = t.valence * m.valence < 0 ? clamp(Math.min(Math.abs(t.valence), Math.abs(m.valence)) / 0.35, 0, 1) : 0;
+    const mixed = Math.max(textMix, cross);
+    let candidate = null, mixFrom = null;
+    if (mixed >= 0.25) {
+      if (textMix >= cross) {
+        mixFrom = 'text';
+        candidate = valence >= 0 ? (t.negArousal >= 0.5 ? 'geometry' : 'ma') : (t.posArousal >= 0.5 ? 'cutout' : 'brush');
+      } else {
+        mixFrom = 'music';
+        const songAgrees = (valence >= 0) === (m.valence >= 0);
+        candidate = songAgrees ? quadrant(t.valence, t.arousal) : quadrant(m.valence, m.energy);
+      }
+    }
+    const pull = candidate ? 0.5 * mixed : 0;
+    const W = {};
+    ORDER.forEach((k) => { W[k] = (1 - pull) * soft[k] + (k === candidate ? pull : 0); });
+    // The day's overall mood picks the main technique; the second feeling only
+    // adds interludes and never takes over (otherwise one sad word could turn
+    // a warm day into Ma).
+    const technique = ORDER.slice().sort((x, y) => soft[y] - soft[x])[0];
+    const ranked = [technique, ...ORDER.filter((k) => k !== technique).sort((x, y) => W[y] - W[x])];
+    const strength = Math.min(1, W[ranked[1]] / W[technique]);
+    const secondary = strength >= SECOND_MIN ? ranked[1] : null;
+    // The stronger the second feeling, the more often its shots appear.
+    const every = !secondary ? 0 : strength >= 0.75 ? 3 : strength >= 0.55 ? 4 : 5;
+    const blendFrom = !secondary ? null : candidate && (secondary === candidate || technique === candidate) ? mixFrom : 'border';
+
     const T = TECHNIQUES[technique];
     const intensity = clamp(Math.hypot(valence, (energy - 0.5) * 2) / 1.2, 0.25, 1);
+    const share = (k) => Math.round(soft[k] * 100) + ' %';
     why.push({
       group: 'Приём', input: `${energy >= 0.5 ? 'Высокая' : 'Низкая'} энергия, ${valence >= 0 ? 'светлое' : 'тёмное'} настроение`,
       rule: `${T.when} → «${T.name}» (${T.ref})`, result: T.why,
+    });
+    if (mixed >= 0.25) {
+      const words = (sign) => t.hits.filter((h) => h.v * sign > 0).sort((a, b) => Math.abs(b.v) - Math.abs(a.v))
+        .slice(0, 2).map((h) => `«${h.word}»`).join(', ');
+      why.push({
+        group: 'Приём', input: 'Смешанные чувства',
+        rule: mixFrom === 'text'
+          ? `В тексте рядом светлое (${words(1)}) и тёмное (${words(-1)})`
+          : `Песня ${m.valence < 0 ? 'темнее' : 'светлее'} текста: песня ${f2(m.valence)}, текст ${f2(t.valence)}`,
+        result: `смешанность ${pct(mixed)}: день не сводится к одному чувству`,
+      });
+    }
+    why.push({
+      group: 'Приём', input: blendFrom === 'border' ? 'День у границы двух приёмов' : secondary ? 'Второе чувство дня' : 'Доли приёмов',
+      rule: secondary
+        ? `Главный приём по общему настроению — «${T.name}»; второе — «${TECHNIQUES[secondary].name}», сила ${pct(strength)}`
+        : ORDER.slice().sort((x, y) => soft[y] - soft[x]).slice(0, 3).map((k) => `${TECHNIQUES[k].name} ${share(k)}`).join(', '),
+      result: secondary
+        ? `каждая ${every}-я смена кадра повторяет предыдущее фото в приёме «${TECHNIQUES[secondary].name}» (${TECHNIQUES[secondary].ref}), тот же момент другим чувством: ${TECHNIQUES[secondary].interlude}`
+        : 'день далеко от границ: один чистый приём',
     });
 
     // ---- 3. palette: the photos' own colours, graded by mood -------------
     const night = t.time === 'night';
     const era = m.era || { grain: 0.12, fade: 0, label: '' };
     const grade = {
-      satMul: clamp(0.6 + 0.55 * energy + 0.3 * Math.max(valence, 0) - 0.3 * Math.max(-valence, 0) - (technique === 'ma' ? 0.25 : 0), 0.25, 1.6),
+      satMul: clamp(0.6 + 0.55 * energy + 0.3 * Math.max(valence, 0) - 0.3 * Math.max(-valence, 0) - 0.25 * W.ma, 0.25, 1.6),
       hueTarget: warmth >= 0 ? 32 : 212,
       hueAmount: clamp(0.35 * Math.abs(warmth), 0, 0.35),
       lightTarget: 0.5 + 0.18 * valence, lightPull: 0.15,
@@ -155,13 +223,18 @@
     });
     if (night) why.push({ group: 'Цвет', input: 'Время суток: ночь', rule: 'Все цвета темнее на 18 %', result: 'ночь остаётся ночью' });
 
-    let windowBg;
-    if (technique === 'brush') windowBg = TD.color.mix(light, PAPER, 0.3);
-    else if (technique === 'geometry') windowBg = TD.color.mix(dark, [20, 26, 43], 0.6);
-    else if (technique === 'cutout') {
-      const [h, s] = rgb2hsl(accent);
-      windowBg = hsl2rgb([h + 25, clamp(Math.max(s, 0.55), 0, 0.85), 0.66]);
-    } else windowBg = TD.color.mix(PAPER, rgb2hsl(light)[1] > 0.1 ? hsl2rgb([rgb2hsl(light)[0], 0.12, 0.88]) : light, 0.25);
+    const windowBgFor = (k) => {
+      if (k === 'brush') return TD.color.mix(light, PAPER, 0.3);
+      if (k === 'geometry') return TD.color.mix(dark, [20, 26, 43], 0.6);
+      if (k === 'cutout') {
+        const [h, s] = rgb2hsl(accent);
+        return hsl2rgb([h + 25, clamp(Math.max(s, 0.55), 0, 0.85), 0.66]);
+      }
+      return TD.color.mix(PAPER, rgb2hsl(light)[1] > 0.1 ? hsl2rgb([rgb2hsl(light)[0], 0.12, 0.88]) : light, 0.25);
+    };
+    const windowBg = windowBgFor(technique);
+    const windowBgs = { [technique]: windowBg };
+    if (secondary) windowBgs[secondary] = windowBgFor(secondary);
 
     // ---- 4. rhythm: the song's tempo drives the montage --------------------
     const bpm = m.bpm || 96;
@@ -170,9 +243,13 @@
     while (beatsPerShot * beat < 1.4) beatsPerShot *= 2;
     while (beatsPerShot * beat > 7.5 && beatsPerShot > 2) beatsPerShot /= 2;
     const shotDur = beatsPerShot * beat;
-    const fade = { brush: 0.45, ma: 0.55, cutout: 0.08, geometry: 0 }[technique] * shotDur;
+    const fade = FADE[technique] * shotDur;
+    // Each technique keeps its own transition: a Ma pause fades in slowly even
+    // inside a hard-cut Kandinsky day, and the day snaps back with a cut.
+    const fadeBy = { [technique]: fade };
+    if (secondary) fadeBy[secondary] = FADE[secondary] * shotDur;
     const motion = {
-      bpm, beat, beatOffset: m.beatOffset || 0, beatsPerShot, shotDur, fade,
+      bpm, beat, beatOffset: m.beatOffset || 0, beatsPerShot, shotDur, fade, fadeBy,
       zoom: 0.03 + 0.07 * energy,
       pulse: clamp(0.02 + 0.09 * m.energy * (0.5 + (m.percussive || 0.5)), 0.02, 0.12),
       sway: 2 + 7 * energy,
@@ -197,7 +274,7 @@
     });
 
     // ---- 6. texture ---------------------------------------------------------
-    const grain = clamp((era.grain || 0.1) + (night ? 0.12 : 0) + 0.08 * t.sensory + (technique === 'brush' ? 0.04 : 0), 0.04, 0.6);
+    const grain = clamp((era.grain || 0.1) + (night ? 0.12 : 0) + 0.08 * t.sensory + 0.04 * W.brush, 0.04, 0.6);
     why.push({
       group: 'Фактура', input: era.label ? `Год песни: ${era.label}` : 'Год песни не указан',
       rule: `Плёночное зерно ${pct(grain)}${night ? ' (+ночь)' : ''}${t.sensoryCount ? `, чувственных слов: ${t.sensoryCount}` : ''}`,
@@ -233,7 +310,8 @@
     const voice = {
       rate: +clamp(0.82 + 0.42 * energy, 0.8, 1.25).toFixed(2),
       pitch: +clamp(0.95 + 0.22 * valence + 0.1 * (energy - 0.5), 0.75, 1.25).toFixed(2),
-      pause: Math.round(700 - 500 * energy),
+      // A mixed day is read with longer pauses: the narrator "chooses words".
+      pause: Math.round(700 - 500 * energy + 300 * mixed),
       duck: 0.22,
       label: energy < 0.5 ? (valence >= 0 ? 'тихий и тёплый' : 'тихий и ровный') : (valence >= 0 ? 'живой и быстрый' : 'собранный и чёткий'),
     };
@@ -243,15 +321,22 @@
       result: 'один голос рассказчика на весь дневник, меняется только подача; музыка приглушается',
     });
 
+    const weights = {};
+    ORDER.forEach((k) => { weights[k] = +W[k].toFixed(3); });
     return {
-      version: 1, seed, technique, techniqueInfo: T, intensity,
+      version: 2, seed, technique, techniqueInfo: T, intensity,
+      blend: {
+        weights, secondary, secondaryInfo: secondary ? TECHNIQUES[secondary] : null,
+        strength: +strength.toFixed(3), every, from: blendFrom,
+        mixed: +mixed.toFixed(3), textMix: +textMix.toFixed(3), cross: +cross.toFixed(3),
+      },
       mood: { valence: +valence.toFixed(3), energy: +energy.toFixed(3), warmth: +warmth.toFixed(3) },
-      grade, palette: { colors, accent, dark, light, windowBg, paper: PAPER, ink: INK },
+      grade, palette: { colors, accent, dark, light, windowBg, windowBgs, paper: PAPER, ink: INK },
       motion, air, texture: { grain, leak, particles, vignette, strokeLen: 12 + 30 * (1 - energy) },
       typo, voice, why,
       labels: { time: TIME_RU[t.time] || null, season: SEASON_RU[t.season] || null, weather: t.weather.map((w) => WEATHER_RU[w]) },
     };
   }
 
-  TD.system = { design, makeGrade, TECHNIQUES, hashStr, rng, PAPER, INK };
+  TD.system = { design, makeGrade, TECHNIQUES, hashStr, rng, PAPER, INK, SOFT: { SOFT_E, SOFT_V, SECOND_MIN } };
 })(globalThis.TD = globalThis.TD || {});
