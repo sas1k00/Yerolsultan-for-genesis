@@ -158,26 +158,40 @@
     const draw = (q) => {
       q = (q || '').toLowerCase().trim();
       const shown = days.filter((d) => !q || (d.title + ' ' + d.rawText + ' ' + (d.song.artist || '') + ' ' + (d.song.title || '')).toLowerCase().includes(q));
+      // One shelf for the whole diary: the first day of each month carries a paper-tape
+      // sticker with the month; every card is glued in at its own slight angle.
       let html = '', month = '';
       shown.forEach((d) => {
         const dt = new Date(d.date + 'T12:00:00'), m = `${MONTHS_N[dt.getMonth()]} ${dt.getFullYear()}`;
-        if (m !== month) { html += `${month ? '</div>' : ''}<div class="month">${m}</div><div class="grid">`; month = m; }
-        html += `<a class="folder" href="#/day/${encodeURIComponent(d.id)}"><div class="tab"></div><div class="body">
+        const tilt = ((TD.system.hashStr(d.id) % 7) - 3) * 0.55;
+        const sticker = m !== month ? `<span class="month-tape">${m}</span>` : '';
+        month = m;
+        html += `<a class="folder" data-id="${esc(d.id)}" style="--tilt:${tilt.toFixed(2)}deg" href="#/day/${encodeURIComponent(d.id)}">${sticker}<div class="tab"></div><div class="body">
           <img src="${d.cover}" alt="Страница дня «${esc(d.title)}»" loading="lazy"><div class="name">${esc(d.title)}</div>
           <div class="meta">${fmtDate(d.date)} · ${esc(d.design.techniqueInfo.name)}${d.design.blend && d.design.blend.secondary ? ' + ' + esc(d.design.blend.secondaryInfo.name) : ''}</div></div></a>`;
       });
-      $('#list').innerHTML = shown.length ? html + '</div>' : '<p class="lede">Ничего не нашлось.</p>';
+      $('#list').innerHTML = shown.length ? `<div class="shelf">${html}</div>` : '<p class="lede">Ничего не нашлось.</p>';
+      reveal($('#list'), '.folder');
+      // Coming back from a day: its page shrinks back into its own folder.
+      const back = lastDayId && $(`#list .folder[data-id="${CSS.escape(lastDayId)}"] img`);
+      if (back) { back.style.viewTransitionName = 'day-cover'; setTimeout(() => { back.style.viewTransitionName = ''; }, 900); }
     };
     draw();
     $('.search').oninput = (e) => draw(e.target.value);
+    // Opening a day: this cover grows into the day's page.
+    $('#list').addEventListener('click', (e) => {
+      const img = e.target.closest('.folder') && e.target.closest('.folder').querySelector('img');
+      if (img) img.style.viewTransitionName = 'day-cover';
+    });
   }
 
   async function viewFeed() {
     const days = (await TD.store.all()).slice().reverse();
     app.innerHTML = `<h1 class="hand">Лента</h1>
       <p class="lede">Проверка лентой: дни рядом должны выглядеть как дневник одного человека, но каждый день остаётся своим. Постоянно: бумага, дата, окно для фото с уголками, рукописное название, строка песни, печать дня. Меняется: приём, цвет, ритм, фактура, шрифт подписи.</p>
-      <div class="feed">${days.map((d) => `<a href="#/day/${encodeURIComponent(d.id)}"><img src="${d.cover}" alt="${esc(d.title)}">
-        <div class="name">${esc(d.title)}</div><div class="meta">${fmtDate(d.date)}</div></a>`).join('') || '<p>Пока нет дней.</p>'}</div>`;
+      <div class="film" tabindex="0" aria-label="Лента дней, листается вбок"><div class="feed">${days.map((d, i) => `<a href="#/day/${encodeURIComponent(d.id)}"><span class="frame-no">${String(i + 1).padStart(2, '0')}  ТОТ ДЕНЬ</span><img src="${d.cover}" alt="${esc(d.title)}">
+        <div class="name">${esc(d.title)}</div><div class="meta">${fmtDate(d.date)}</div></a>`).join('') || '<p>Пока нет дней.</p>'}</div></div>`;
+    reveal(app, '.feed a');
   }
 
   // ------------------------------------------------------------- new day ---
@@ -294,7 +308,15 @@
       f.hidden = true;
       const box = $('#building'); box.hidden = false;
       const logEl = $('#build-log');
-      const log = (s) => { $('#build-step').textContent = s + '…'; logEl.insertAdjacentHTML('beforeend', `<li>${esc(s)}</li>`); };
+      // The first photo "develops" while the day is built: grey and blurry → colour and sharp.
+      const dev = $('#develop'), devImg = $('#develop-img'), devUrl = URL.createObjectURL(files[0]);
+      devImg.src = devUrl;
+      let devStep = 0;
+      const STEPS = 7;
+      const log = (s) => {
+        $('#build-step').textContent = s + '…'; logEl.insertAdjacentHTML('beforeend', `<li>${esc(s)}</li>`);
+        devStep += 1; dev.style.setProperty('--dev', Math.min(0.85, devStep / STEPS).toFixed(2));
+      };
       try {
         const day = await buildDay({
           date: f.date.value, text: f.text.value.trim(), photos: files, weather: f.weather.value,
@@ -303,6 +325,10 @@
             genre: f.genre.value, year: f.year.value ? +f.year.value : null, moodHint: f.moodHint.value, energyHint: f.energyHint.value, tempoHint: f.tempoHint.value,
             tapBpm: f.dataset.tap ? +f.dataset.tap : null },
         }, log);
+        // The finished page appears on the Polaroid, then the day opens.
+        devImg.src = day.cover; dev.style.setProperty('--dev', '1'); dev.classList.add('done');
+        await new Promise((r) => setTimeout(r, reduceMotion() ? 0 : 1100));
+        URL.revokeObjectURL(devUrl);
         location.hash = '#/day/' + encodeURIComponent(day.id);
       } catch (ex) {
         console.error(ex);
@@ -342,7 +368,7 @@
 
     app.innerHTML = `<div class="day">
       <div class="stage">
-        <div class="frame"><canvas aria-label="Анимированная страница дня"></canvas>
+        <div class="frame"><canvas aria-label="Анимированная страница дня"></canvas><img class="frame-cover" src="${day.cover}" alt="">
           <button class="play-cover" id="play">▶ Открыть день<span>${s.file ? 'со звуком' : link && link.youtube ? 'с песней с YouTube' : 'песня — в плеере ниже'}</span></button></div>
         <div class="controls">
           <button class="btn" id="pp" disabled>❚❚ Пауза</button>
@@ -380,10 +406,13 @@
         <p style="margin-top:18px"><button class="btn btn-ghost" id="del">Удалить день</button></p>
       </div></div>`;
 
+    lastDayId = id;
+    markShell(); // the layout is there: the transition can play while the page prepares
     const canvas = $('canvas', app);
     const player = TD.render.createPlayer(canvas, { day, design: D, images: imgs });
     await player.prepare();
     player.draw(Math.min(D.motion.shotDur * 0.7, 3), { final: true });
+    const fc = $('.frame-cover', app); if (fc) fc.remove(); // the canvas now shows the page
 
     // ---- the song: an audio file or a YouTube player, from the day's moment ----
     const mo = day.moment || { start: 0, length: null };
@@ -599,6 +628,33 @@
   }
 
   // -------------------------------------------------------------- router ---
+  // ------------------------------------------------------------- motion ---
+  const reduceMotion = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  let lastDayId = null, shellReady = null;
+  const markShell = () => { if (shellReady) { const r = shellReady; shellReady = null; r(); } };
+  /** Cards appear softly as they scroll into view (not with reduced motion). */
+  function reveal(root, sel) {
+    if (reduceMotion() || !('IntersectionObserver' in window)) return;
+    const items = [...root.querySelectorAll(sel)];
+    const io = new IntersectionObserver((es) => es.forEach((en) => {
+      if (!en.isIntersecting) return;
+      const el = en.target;
+      el.classList.add('in'); io.unobserve(el);
+      el.addEventListener('transitionend', () => el.classList.remove('reveal', 'in'), { once: true });
+    }), { rootMargin: '0px 0px -40px 0px' });
+    items.forEach((el, i) => { el.classList.add('reveal'); el.style.setProperty('--delay', `${(i % 5) * 70}ms`); io.observe(el); });
+  }
+  /** Page changes go through the browser's View Transitions where available: the
+   *  old page is captured, the new one is built, and the browser animates between them. */
+  function navigate() {
+    if (!document.startViewTransition || reduceMotion()) return route();
+    document.startViewTransition(() => new Promise((res) => {
+      shellReady = res;
+      route().finally(markShell);
+      setTimeout(markShell, 1200); // never hold the page frozen
+    }));
+  }
+
   async function route() {
     if (cleanup) { try { cleanup(); } catch (e) { /* ignore */ } cleanup = null; }
     const h = location.hash || '#/';
@@ -616,7 +672,7 @@
       app.innerHTML = `<p class="form-error">Ошибка: ${esc(e.message)}</p>`;
     }
   }
-  window.addEventListener('hashchange', route);
+  window.addEventListener('hashchange', navigate);
   TD.app = { buildDay, loadDemo, route };
   route();
 })(globalThis.TD = globalThis.TD || {});

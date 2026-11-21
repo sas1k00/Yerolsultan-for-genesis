@@ -47,10 +47,25 @@ h1.hand { font-size: clamp(40px, 6vw, 60px); line-height: 1; margin: 18px 0 18px
 .search { flex: 1; min-width: 200px; max-width: 360px; padding: 10px 14px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); font: 15px var(--sans); }
 .month { font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--ink-2); margin: 28px 0 10px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 18px; }
-.folder { text-decoration: none; display: block; }
+/* The archive: one shelf for the whole diary. Each card is glued in at its own
+   slight angle; the first day of a month carries a paper-tape sticker. */
+.shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 34px 24px; padding: 18px 4px 8px; }
+.folder { text-decoration: none; display: block; position: relative; transform: rotate(var(--tilt, 0deg));
+  transition: transform .28s cubic-bezier(.2, .8, .2, 1); }
 .folder .tab { width: 46%; height: 12px; background: var(--paper-2); border: 1px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0; }
-.folder .body { background: var(--card); border: 1px solid var(--line); border-radius: 0 10px 10px 10px; padding: 8px; transition: transform .15s; }
-.folder:hover .body { transform: translateY(-3px); }
+.folder .body { background: var(--card); border: 1px solid var(--line); border-radius: 0 10px 10px 10px; padding: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .06); transition: box-shadow .28s; }
+.folder:hover, .folder:focus-visible { transform: translateY(-7px) rotate(0deg) scale(1.025); z-index: 1; }
+.folder:hover .body, .folder:focus-visible .body { box-shadow: 0 16px 34px rgba(0, 0, 0, .16); }
+.folder:focus-visible { outline: none; }
+.folder:focus-visible .body { outline: 2px solid var(--ink); outline-offset: 3px; }
+.month-tape { position: absolute; z-index: 2; top: -14px; right: 8px; transform: rotate(4deg); padding: 5px 12px 4px;
+  font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 24%, var(--paper)); opacity: .92; box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+  clip-path: polygon(0 8%, 4% 0, 8% 10%, 12% 0, 100% 0, 96% 50%, 100% 100%, 8% 100%, 4% 92%, 0 100%); }
+/* Soft appearance on scroll (classes set by JS; nothing hidden without it). */
+.reveal { opacity: 0; transform: translateY(16px) rotate(var(--tilt, 0deg)); }
+.reveal.in { opacity: 1; transform: rotate(var(--tilt, 0deg)); transition: opacity .55s ease var(--delay, 0ms), transform .55s cubic-bezier(.2, .8, .2, 1) var(--delay, 0ms); }
 .folder img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; display: block; border-radius: 4px; background: var(--paper-2); }
 .folder .name { font: 700 22px/1.05 var(--hand); margin: 8px 2px 2px; }
 .folder .meta { font: 11px var(--mono); color: var(--ink-2); margin: 0 2px; text-transform: uppercase; letter-spacing: .04em; }
@@ -59,11 +74,20 @@ h1.hand { font-size: clamp(40px, 6vw, 60px); line-height: 1; margin: 18px 0 18px
 .empty .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
 /* ---------- feed ("проверка лентой") ---------- */
-.feed { display: flex; gap: 14px; overflow-x: auto; padding: 10px 2px 18px; scroll-snap-type: x mandatory; }
-.feed a { flex: 0 0 auto; width: clamp(150px, 22vw, 230px); text-decoration: none; scroll-snap-align: start; }
-.feed img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 6px; display: block; box-shadow: 0 6px 18px rgba(0, 0, 0, .12); }
-.feed .name { font: 700 20px/1.05 var(--hand); margin-top: 8px; }
-.feed .meta { font: 11px var(--mono); color: var(--ink-2); text-transform: uppercase; }
+/* The feed: a strip of film. Frames snap into place; sprocket holes run along both edges. */
+.film { position: relative; background: #18130f; border-radius: 10px; padding: 34px 0 30px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04), 0 14px 34px rgba(0, 0, 0, .18); }
+.film::before, .film::after { content: ""; position: absolute; left: 10px; right: 10px; height: 12px; pointer-events: none;
+  background: radial-gradient(ellipse 5px 4px at 50% 50%, #e9e1d2 0 98%, transparent 100%) 0 0 / 24px 12px repeat-x; opacity: .85; }
+.film::before { top: 10px; } .film::after { bottom: 8px; }
+.film:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.feed { display: flex; gap: 18px; overflow-x: auto; padding: 4px 22px 10px; scroll-snap-type: x mandatory; scroll-padding: 0 22px;
+  scrollbar-width: thin; scrollbar-color: rgba(233, 225, 210, .35) transparent; }
+.feed a { flex: 0 0 auto; width: clamp(160px, 22vw, 236px); text-decoration: none; scroll-snap-align: start; color: #efe7da; }
+.feed .frame-no { display: block; font: 500 10px var(--mono); letter-spacing: .14em; color: #e0a04a; margin: 0 0 6px 2px; }
+.feed img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 3px; display: block; transition: transform .25s; }
+.feed a:hover img, .feed a:focus-visible img { transform: translateY(-4px); }
+.feed .name { font: 700 21px/1.05 var(--hand); margin-top: 10px; color: #f2ece1; }
+.feed .meta { font: 11px var(--mono); color: #b3a796; text-transform: uppercase; }
 .lede { color: var(--ink-2); max-width: 700px; }
 
 /* ---------- new day ---------- */
@@ -105,7 +129,16 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--ink); outli
 .tap:has(input:focus-visible), .tap:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .tap-out { font: 13px var(--mono); }
 .form-error { color: var(--accent); min-height: 1em; margin-bottom: 10px; }
-.building { margin-top: 18px; }
+.building { margin-top: 18px; display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto 1fr; gap: 6px 32px; align-items: start; }
+.building > .develop { grid-row: 1 / span 2; }
+.develop { --dev: 0; width: min(240px, 56vw); background: #fbf8f2; padding: 12px 12px 44px; border-radius: 3px; transform: rotate(-2.5deg);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, .2); position: relative; overflow: hidden; }
+.develop img { display: block; width: 100%; aspect-ratio: 9 / 16; object-fit: cover; background: #d8d0c2;
+  filter: grayscale(calc(1 - var(--dev))) sepia(calc((1 - var(--dev)) * .35)) blur(calc((1 - var(--dev)) * 9px)) brightness(calc(.82 + .18 * var(--dev)));
+  transition: filter 1s ease; }
+.develop.done::after { content: ""; position: absolute; inset: 0; background: #fff; animation: develop-flash .7s ease-out forwards; pointer-events: none; }
+@keyframes develop-flash { from { opacity: .75; } to { opacity: 0; } }
+@media (max-width: 600px) { .building { grid-template-columns: 1fr; } .building > .develop { grid-row: auto; justify-self: center; } }
 .building ol { font: 13px/1.9 var(--mono); color: var(--ink-2); padding-left: 20px; }
 
 /* ---------- day ---------- */
@@ -113,6 +146,16 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--ink); outli
 .stage { position: sticky; top: 12px; }
 .stage .frame { position: relative; aspect-ratio: 9 / 16; width: 100%; max-height: calc(100vh - 140px); margin: 0 auto; box-shadow: 0 14px 40px rgba(0, 0, 0, .18); border-radius: 6px; overflow: hidden; background: #f2ece1; }
 .stage canvas { width: 100%; height: 100%; display: block; }
+/* The cover stands in until the moving page is ready; it is also what the archive card grows into. */
+.stage .frame { view-transition-name: day-cover; }
+.frame-cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+::view-transition-group(day-cover) { animation-duration: .55s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .3s; }
+@media (prefers-reduced-motion: reduce) {
+  .folder, .folder .body, .reveal, .reveal.in, .feed img, .develop img { transition: none !important; }
+  .develop.done::after { animation: none; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
 .play-cover { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(20, 16, 12, .28); border: 0; cursor: pointer; color: #fff; font: 700 34px var(--hand); flex-direction: column; gap: 6px; }
 .play-cover span { font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .1em; opacity: .85; }
 .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; justify-content: center; }
@@ -179,6 +222,6 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--ink); outli
   .stage .frame { max-height: 78vh; }
   .song-grid { grid-template-columns: 1fr; }
   .why li { grid-template-columns: 1fr; gap: 2px; }
-  .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .grid, .shelf { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 26px 14px; }
 }
 .play-cover[hidden], [hidden] { display: none !important; }
