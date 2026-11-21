@@ -3,7 +3,7 @@ const vm = require('vm');
 const fs = require('fs');
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
-for (const f of ['lexicon', 'text', 'naming', 'photo', 'music', 'system', 'store', 'moment', 'render']) {
+for (const f of ['lexicon', 'text', 'naming', 'photo', 'music', 'system', 'store', 'moment', 'render', 'songinfo']) {
   vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'js', f + '.js'), 'utf8'), { filename: f + '.js' });
 }
 const TD = globalThis.TD;
@@ -385,6 +385,36 @@ console.log('Photos: nothing important is cropped');
   });
   test('a plain landscape fills the window', () => ok(TD.render.placeIn(1600, 1200, 960, 1290, fLand).covers));
   test('the slow zoom never pushes the subject out', () => ok(inside(TD.render.placeIn(1600, 1200, 960, 1290, fOne, 1.1), fOne, 960, 1290)));
+}
+
+console.log('Song from a link: title, artist, year, genre');
+{
+  const SI = TD.songinfo;
+  const rel = (artist, trackName, year, genre) => ({ artistName: artist, trackName, releaseDate: year + '-01-01T08:00:00Z', primaryGenreName: genre });
+  test('YouTube titles: «Artist - Title», noise removed (Official Video, Lyrics, премьера клипа)', () => {
+    eq(JSON.stringify(SI.splitArtistTitle('Dimash - SOS (Official Video) | 4K', 'x')), JSON.stringify({ artist: 'Dimash', title: 'SOS' }));
+    eq(JSON.stringify(SI.splitArtistTitle('Скриптонит — Положение (премьера клипа)', 'x')), JSON.stringify({ artist: 'Скриптонит', title: 'Положение' }));
+    eq(SI.splitArtistTitle('Despacito', 'Luis Fonsi - Topic').artist, 'Luis Fonsi');
+    eq(SI.splitArtistTitle('My trip vlog', 'Some Channel').artist, null, 'a channel is not an artist');
+  });
+  test('SoundCloud «Title by Artist» and file names «01 Artist - Title.mp3»; «song.wav» says nothing', () => {
+    eq(SI.splitBy('Flickermood by Forss').artist, 'Forss');
+    eq(SI.fromFileName('01 Frank Sinatra - The Way You Look Tonight.mp3').title, 'The Way You Look Tonight');
+    eq(SI.fromFileName('song.wav'), null);
+  });
+  test('the original year wins over remasters and compilations; covers by others are ignored', () => {
+    const r = SI.pickRelease([rel('Frank Sinatra', 'The Way You Look Tonight (Remastered)', 2014, 'Pop'), rel('Michael Bublé', 'The Way You Look Tonight', 2003, 'Pop'),
+      rel('Frank Sinatra', 'The Way You Look Tonight', 1964, 'Jazz'), rel('Frank Sinatra', 'The Way You Look Tonight', 1964, 'Jazz')], 'Frank Sinatra', 'The Way You Look Tonight');
+    eq(r.year, 1964); eq(r.genre, 'jazz');
+  });
+  test('title only (Spotify): the artist with the most releases of that title, not an older song of the same name', () => {
+    const r = SI.pickRelease([rel('Isaac Hayes', 'Never Gonna Give You Up', 1971, 'R&B/Soul'), rel('Rick Astley', 'Never Gonna Give You Up', 1987, 'Pop'),
+      rel('Rick Astley', 'Never Gonna Give You Up (2022 Remaster)', 1987, 'Pop'), rel('Rick Astley', 'Never Gonna Give You Up (Cake Mix)', 1987, 'Pop')], null, 'Never Gonna Give You Up');
+    eq(r.artist, 'Rick Astley'); eq(r.year, 1987);
+  });
+  test('iTunes genres map onto the diary\'s genres', () => {
+    eq(SI.genreKey('Vocal Jazz'), 'jazz'); eq(SI.genreKey('Hip-Hop/Rap'), 'hiphop'); eq(SI.genreKey('K-Pop'), 'kpop'); eq(SI.genreKey('Soundtrack'), 'soundtrack'); eq(SI.genreKey('Alternative'), 'rock');
+  });
 }
 
 console.log('Storage helpers');

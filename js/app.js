@@ -222,6 +222,33 @@
       pickBtn.title = ok ? 'Послушать песню и выбрать момент' : 'Работает со ссылкой YouTube или аудиофайлом';
     };
     f.link.addEventListener('input', updatePick); f.audio.addEventListener('change', updatePick); updatePick();
+    // Paste a link (or choose a file named "Artist - Title"): title, artist, year and genre fill
+    // themselves. Anything the person typed is never overwritten.
+    const info = $('#song-info');
+    ['artist', 'title', 'year'].forEach((k) => f[k].addEventListener('input', () => { f[k].dataset.user = 1; }));
+    f.genre.addEventListener('change', () => { f.genre.dataset.user = 1; });
+    let lookupSeq = 0, lookupTimer = 0;
+    const fillField = (k, v) => { if (v != null && v !== '' && !f[k].dataset.user) f[k].value = v; };
+    const autofill = () => {
+      clearTimeout(lookupTimer);
+      lookupTimer = setTimeout(async () => {
+        const link = TD.music.parseLink(f.link.value.trim()), file = f.audio.files[0] || null;
+        if (!link && !file) return;
+        if (link && !file && !/youtube|spotify|soundcloud|apple/i.test(link.platform)) {
+          info.textContent = `${link.platform} не сообщает название песни: впишите его ниже.`; return;
+        }
+        const my = ++lookupSeq;
+        info.textContent = 'Ищу название, исполнителя и год…';
+        const r = await TD.songinfo.lookup({ link: file ? null : link, fileName: file && file.name });
+        if (my !== lookupSeq) return; // a newer link was pasted meanwhile
+        if (!r) { info.textContent = file ? 'По имени файла песню не узнать: впишите название и исполнителя.' : 'Не получилось узнать песню по ссылке: впишите название сами.'; return; }
+        fillField('title', r.title); fillField('artist', r.artist); fillField('year', r.year);
+        if (r.genre && !f.genre.dataset.user) f.genre.value = r.genre;
+        info.textContent = `Нашлось (${r.from}): ${[r.artist, r.title].filter(Boolean).join(' — ')}${r.year ? ', ' + r.year : ''}`
+          + `${r.genre ? ', ' + TD.music.GENRES[r.genre].label : ''}.${r.artistGuessed ? ' Исполнителя угадали по названию — проверьте.' : ''} Можно поправить.`;
+      }, 350);
+    };
+    f.link.addEventListener('input', autofill); f.audio.addEventListener('change', autofill);
     pickBtn.onclick = async () => {
       const r = await TD.moment.pick({ link: TD.music.parseLink(f.link.value.trim()), file: f.audio.files[0] || null,
         start: TD.music.parseTime(f.start.value), length: VIDEO_SECS });
