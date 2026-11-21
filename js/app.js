@@ -47,7 +47,7 @@
   /** Which part of the song belongs to the day (see TD.music.findMoment). */
   function songMoment(dec, songIn, design, music) {
     const link = TD.music.parseLink(songIn.link);
-    const user = TD.music.parseTime(songIn.start);
+    const user = typeof songIn.start === 'number' ? songIn.start : TD.music.parseTime(songIn.start);
     if (dec) {
       const dur = dec.mono.length / dec.sr;
       if (user != null) {
@@ -252,7 +252,8 @@
     pickBtn.onclick = async () => {
       const r = await TD.moment.pick({ link: TD.music.parseLink(f.link.value.trim()), file: f.audio.files[0] || null,
         start: TD.music.parseTime(f.start.value), length: VIDEO_SECS });
-      if (r) f.start.value = fmtTime(r.start);
+      // The field shows whole seconds; the exact choice (already on the beat) is kept alongside.
+      if (r) { f.start.value = fmtTime(r.start); f.start.dataset.exact = String(r.start); }
     };
     drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
     drop.ondragleave = () => drop.classList.remove('over');
@@ -297,7 +298,8 @@
       try {
         const day = await buildDay({
           date: f.date.value, text: f.text.value.trim(), photos: files, weather: f.weather.value,
-          song: { file: audio, fileName: audio && audio.name, link, start: f.start.value.trim(), artist: f.artist.value.trim(), title: f.title.value.trim(),
+          song: { file: audio, fileName: audio && audio.name, link,
+            start: f.start.dataset.exact && f.start.value.trim() === fmtTime(+f.start.dataset.exact) ? +f.start.dataset.exact : f.start.value.trim(), artist: f.artist.value.trim(), title: f.title.value.trim(),
             genre: f.genre.value, year: f.year.value ? +f.year.value : null, moodHint: f.moodHint.value, energyHint: f.energyHint.value, tempoHint: f.tempoHint.value,
             tapBpm: f.dataset.tap ? +f.dataset.tap : null },
         }, log);

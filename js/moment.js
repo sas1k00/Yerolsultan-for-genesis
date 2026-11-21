@@ -59,14 +59,14 @@
   function pick(o) {
     return new Promise((resolve) => {
       const len = o.length || 30;
-      let start = o.start || 0, dur = null, done = false, previewing = false, timer = 0;
+      let start = o.start || 0, dur = null, done = false, previewing = false, timer = 0, ytError = null;
       let audio = null, url = null, yt = null, suggestion = null, snap = o.snap || null;
       const dlg = document.createElement('dialog');
       dlg.className = 'picker';
       dlg.setAttribute('aria-label', 'Выбор момента песни');
       dlg.innerHTML = `
         <h2>Момент песни</h2>
-        <p class="hint">Послушайте песню и нажмите «Это мой момент», когда начнётся любимое место. Или передвиньте светлый отрезок на линии: это ${len} секунд, которые будут звучать в воспоминании.</p>
+        <p class="hint">Двигайте отрезок на линии: песня сразу играет с этого места, а выбранные ${len} секунд звучат по кругу, как в Инстаграме. Или слушайте песню в плеере и нажмите «Это мой момент», когда начнётся любимое место.</p>
         <div class="pk-player"><p class="lbl-sm">Загружаю песню…</p></div>
         <div class="pk-track" tabindex="0" role="slider" aria-label="Начало момента песни" aria-valuemin="0" aria-valuenow="0">
           <canvas class="pk-wave" width="800" height="64" aria-hidden="true"></canvas>
@@ -92,7 +92,9 @@
 
       // -- the song: what is playing and where -------------------------------
       const now = () => (audio ? audio.currentTime : yt && yt.getCurrentTime ? yt.getCurrentTime() : 0);
-      const seek = (t) => { if (audio) audio.currentTime = t; else if (yt) yt.seekTo(t, true); };
+      let lastSeek = 0;
+      const seek = (t) => { lastSeek = Date.now(); if (audio) audio.currentTime = t; else if (yt && yt.seekTo) yt.seekTo(t, true); };
+      const isPlaying = () => (audio ? !audio.paused : !!(yt && yt.getPlayerState && yt.getPlayerState() === 1));
       const playSong = () => { if (audio) audio.play().catch(() => {}); else if (yt) yt.playVideo(); };
       const pauseSong = () => { if (audio) audio.pause(); else if (yt && yt.pauseVideo) yt.pauseVideo(); };
 
@@ -113,11 +115,27 @@
         $('.pk-dur').textContent = fmt(dur);
         if (suggestion != null) { const s = $('.pk-sug'); s.hidden = false; s.style.left = (suggestion / dur * 100) + '%'; s.style.width = (len / dur * 100) + '%'; }
       }
+      /* Like Instagram's music picker: moving the window plays the song from its
+       * new start, and the chosen piece loops. While dragging, seeks are
+       * throttled so YouTube is not flooded; letting go jumps exactly. */
+      let seekTimer = 0, lastDragSeek = 0;
+      function preview(final) {
+        previewing = true;
+        const go = () => { clearTimeout(seekTimer); seekTimer = 0; lastDragSeek = Date.now(); seek(start); playSong(); };
+        if (final || Date.now() - lastDragSeek > 300) go();
+        // at most one jump every 0.3 s while dragging, always to the window's latest place
+        else if (!seekTimer) seekTimer = setTimeout(go, 300 - (Date.now() - lastDragSeek));
+      }
       function tick() {
         const t = now();
         $('.pk-now').textContent = fmt(t);
         if (dur) { head.hidden = false; head.style.left = clamp(t / dur * 100, 0, 100) + '%'; }
-        if (previewing && t >= start + len) { pauseSong(); previewing = false; $('[data-a=listen]').textContent = '▶ Послушать момент'; }
+        if (previewing && Date.now() - lastSeek > 1200) {
+          if (t >= start + len && t < start + len + 2) seek(start); // the piece loops
+          else if (t < start - 2 || t > start + len + 2) previewing = false; // they moved in the YouTube player: listen freely
+        }
+        const lb = $('[data-a=listen]');
+        if (lb) lb.textContent = isPlaying() ? '❚❚ Пауза' : '▶ Послушать момент';
       }
       function drawWave(levels) {
         const c = $('.pk-wave'), g = c.getContext('2d');
@@ -158,6 +176,7 @@
           yt = new YT.Player($('.pk-yt div'), {
             videoId: o.link.youtube, width: '100%', height: '100%', playerVars: { start: Math.floor(start), playsinline: 1, rel: 0 },
             events: {
+              onError: (e) => { ytError = e.data; },
               onReady: () => {
                 const wait = () => { if (done) return; const d = yt.getDuration(); if (d > 0) { dur = d; setStart(start); } else setTimeout(wait, 300); };
                 wait();
@@ -181,18 +200,19 @@
         const t = timeAt(e);
         grab = t >= start && t <= start + len ? t - start : 0; // inside the window: drag it; outside: start there
         setStart(t - grab);
+        preview(false);
         track.setPointerCapture(e.pointerId);
       });
-      track.addEventListener('pointermove', (e) => { if (grab != null) setStart(timeAt(e) - grab); });
-      const release = () => { grab = null; };
+      track.addEventListener('pointermove', (e) => { if (grab != null) { setStart(timeAt(e) - grab); preview(false); } });
+      const release = () => { if (grab != null) preview(true); grab = null; };
       track.addEventListener('pointerup', release); track.addEventListener('pointercancel', release);
       track.addEventListener('keydown', (e) => {
         const step = e.shiftKey ? 5 : 1;
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { setStart(start - step); e.preventDefault(); }
-        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { setStart(start + step); e.preventDefault(); }
-        if (e.key === 'Home') { setStart(0); e.preventDefault(); }
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { setStart(start - step); preview(false); e.preventDefault(); }
+        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { setStart(start + step); preview(false); e.preventDefault(); }
+        if (e.key === 'Home') { setStart(0); preview(true); e.preventDefault(); }
       });
-      input.addEventListener('change', () => { const t = TD.music.parseTime(input.value); if (t != null) setStart(t); else input.value = fmt(start); });
+      input.addEventListener('change', () => { const t = TD.music.parseTime(input.value); if (t != null) { setStart(t); preview(true); } else input.value = fmt(start); });
 
       // -- buttons ----------------------------------------------------------------
       function finish(result) {
@@ -210,13 +230,13 @@
         const a = e.target.closest('[data-a]');
         if (!a) return;
         const act = a.dataset.a;
-        if (act === 'back') setStart(start - 5);
-        if (act === 'fwd') setStart(start + 5);
-        if (act === 'suggest' && suggestion != null) setStart(suggestion);
-        if (act === 'mark') { setStart(now() - 0.3); } // a person taps a moment a little late
+        if (act === 'back') { setStart(start - 5); preview(true); }
+        if (act === 'fwd') { setStart(start + 5); preview(true); }
+        if (act === 'suggest' && suggestion != null) { setStart(suggestion); preview(true); }
+        if (act === 'mark') { setStart(now() - 0.3); previewing = true; } // a person taps a moment a little late; keep playing, now looping
         if (act === 'listen') {
-          if (previewing) { pauseSong(); previewing = false; a.textContent = '▶ Послушать момент'; }
-          else { seek(start); playSong(); previewing = true; a.textContent = '❚❚ Пауза'; }
+          if (isPlaying()) { pauseSong(); previewing = false; }
+          else preview(true);
         }
         if (act === 'cancel') finish(null);
         if (act === 'done') {
@@ -227,6 +247,7 @@
         }
       });
       dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(null); }); // Esc
+      dlg.state = () => ({ start, now: now(), previewing, playing: isPlaying(), dur, ytState: yt && yt.getPlayerState ? yt.getPlayerState() : null, ytError });
       dlg.showModal();
       track.focus();
     });
