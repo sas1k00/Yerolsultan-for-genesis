@@ -89,6 +89,23 @@ test('negating a mild word is neutral; «давно так не отдыхали
   ok(TD.analyzeText('Мы никуда не спешили.').valence > 0, 'not hurrying is calm');
 });
 
+test('a day in Rome with groupmates: «Поездка в Рим с одногруппниками», sights are places, not the destination', () => {
+  const txt = 'Целый день в Риме с одногруппниками. Утром пришли в Ватикан: собор Святого Петра в солнце. Потом к Пантеону. Обедали: паста карбонара и тирамису, лучшая еда за всю поездку. Вечером у фонтана Треви бросили монетку.';
+  eq(title(txt, '2026-04-12'), 'Поездка в Рим с одногруппниками');
+  const t = TD.analyzeText(txt);
+  ['Ватикан', 'собор Святого Петра', 'Пантеон', 'фонтан Треви'].forEach((n) => ok(t.places.some((p) => p.nom === n), n));
+  ok(t.details.some((d) => d.nom === 'тирамису'), 'Italian food');
+});
+test('world destinations with grammar: Париж, Барселона, Нью-Йорк; Kazakh classmates', () => {
+  eq(title('Первый вечер в Париже с мамой. Эйфелева башня зажглась огнями.', '2026-05-02'), 'Вечер в Париже с мамой');
+  eq(title('Ездили с однокурсниками в Барселону. Саграда Фамилия огромная.', '2026-07-08'), 'Поездка в Барселону с однокурсниками');
+  eq(title('Сыныптастарыммен Стамбұлға сапар, өте көңілді болды.', '2026-09-10'), 'Поездка в Стамбул с одноклассниками');
+});
+test('false friends: «урок английского» is not England, Сан-Франциско is not France', () => {
+  eq(TD.analyzeText('Урок английского с одиннадцатым классом прошёл весело.').places.length, 0);
+  eq(TD.analyzeText('Сан-Франциско встретил туманом.').places.map((p) => p.nom).join(), 'Сан-Франциско');
+});
+
 console.log('Kazakh and mixed Kazakh–Russian');
 test('Kazakh letters stay inside words', () => eq(TD.textUtil.tokenize('Айгеріммен қуаныштымын').join(' '), 'айгеріммен қуаныштымын'));
 test('pure Kazakh: «День в парке с Айгерім», joyful, language kk', () => {

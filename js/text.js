@@ -49,6 +49,11 @@
       .replace(/рисов\S*\s+террас\S*/g, ' __riceterraces ')
       .replace(/больш\S*\s+алматинск\S*\s+озер\S*/g, ' бао ')
       .replace(/том[\s-]+ям\S*/g, ' __tomyam ')
+      .replace(/испанск\S*\s+лестниц\S*/g, ' __spanishsteps ')
+      .replace(/собор\S*\s+(святого\s+)?петра/g, ' __stpeter ')
+      .replace(/эйфелев\S*(\s+башн\S*)?/g, ' __eiffel ')
+      .replace(/стату\S*\s+свобод\S*/g, ' __liberty ')
+      .replace(/пизанск\S*(\s+башн\S*)?/g, ' __pisa ')
       // "көңілім жоқ" = not in the mood; "көңілім көтерілді" = my mood lifted
       .replace(/көңіл\S*\s+жоқ/g, ' көңілсіз ').replace(/көңіл\S*\s+көтеріл\S*/g, ' көңілді ');
     return t.split(new RegExp(`[^a-z${LOW}0-9_'’]+`, 'i')).filter(Boolean);
@@ -271,7 +276,7 @@
 
     // ---- travel: a trip, its destination and how they got there -----------
     const trip = (L.TRIP || []).find((tr) => tokens.some((tok) => findIn(tok, tr.m))) || null;
-    const destination = res.places.find((p) => p.proper && (p.loc || p.to || p.until)) || null;
+    const destination = res.places.find((p) => p.proper && !p.landmark && (p.loc || p.to || p.until)) || null;
     const transport = res.places.find((p) => p.transport) || null;
     res.travel = trip || (destination && transport) ? { trip, destination, transport } : null;
     res.company = res.people.length > 0 || tokens.includes('мы') || tokens.includes('вместе') || tokens.includes('we');

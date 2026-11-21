@@ -33,6 +33,7 @@
     const tr = t.travel || {};
     const dest = tr.destination || null;
     // A named destination beats "отель" or "бассейн" mentioned before it.
+    // A named destination beats "отель" or a landmark mentioned before it.
     const place = dest && dest.loc ? dest : t.places[0];
     const person = t.people[0];
     // A detail that only repeats the season ("осенний … и листья") is skipped.
