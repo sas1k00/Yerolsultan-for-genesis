@@ -86,17 +86,21 @@
     const N = 1024, hop = 256, bins = N / 2;
     const fps = sr2 / hop;
     let prev = new Float64Array(bins), cur = new Float64Array(bins);
-    const env = [];
+    const env = [], envBeat = [];
+    // For the beat's phase: flux per bin, the low band (kick, bass ≤ 200 Hz)
+    // weighted over the rest, so off-beat hi-hats do not pull the grid.
+    const lowBins = Math.max(2, Math.ceil(200 / (sr2 / N)));
     for (let i = 0; i + N <= n2; i += hop) {
       magSpectrum(y, i, N, cur);
-      let flux = 0;
+      let flux = 0, low = 0, high = 0;
       for (let b = 1; b < bins; b++) {
         const v = Math.log1p(10 * cur[b]);
         const d = v - prev[b];
-        if (d > 0) flux += d;
+        if (d > 0) { flux += d; if (b <= lowBins) low += d; else high += d; }
         prev[b] = v;
       }
       env.push(flux);
+      envBeat.push(i === 0 ? 0 : low / lowBins + 0.3 * high / (bins - lowBins)); // frame 0 has no "before"
     }
     // Remove the slow trend, keep positive peaks.
     const w = Math.round(fps * 0.4), on = new Float64Array(env.length);
@@ -139,13 +143,24 @@
     // Beat phase: the offset whose beat grid collects the most onset energy.
     let beatOffset = 0;
     if (bpm) {
-      const P = lag; let bestP = -1;
-      for (let ph = 0; ph < P; ph += 1) {
-        let s = 0;
-        for (let k = ph; k < on.length; k += P) s += on[Math.round(k)] || 0;
-        if (s > bestP) { bestP = s; beatOffset = ph / fps; }
+      // Tempo and phase together: the grid (within ±1 % of the tempo found
+      // above, phase in quarter frames) that lands on the most kick/bass
+      // onsets on average. A tempo off by 0.3 % drifts 0.15 s over a minute,
+      // so fine-tuning it keeps the grid on the beat across the whole song.
+      // An onset shows when it reaches the frame's centre.
+      let bestP = -1, bestPh = 0, bestBpm = bpm;
+      for (let dt = -0.01; dt <= 0.01 + 1e-9; dt += 0.0005) {
+        const b2 = bpm * (1 + dt), P = fps * 60 / b2;
+        for (let ph = 0; ph < P; ph += 0.25) {
+          let sc = 0, cnt = 0;
+          for (let k = ph; k < envBeat.length - 1; k += P) { const i = Math.floor(k), fr = k - i; sc += envBeat[i] * (1 - fr) + envBeat[i + 1] * fr; cnt += 1; }
+          sc /= cnt || 1;
+          if (sc > bestP) { bestP = sc; bestPh = ph; bestBpm = b2; }
+        }
       }
-      beatOffset = (beatOffset + s0 / sr) % (60 / bpm);
+      bpm = bestBpm;
+      const beat = 60 / bpm;
+      beatOffset = (((bestPh / fps + N / (2 * sr2) + s0 / sr) % beat) + beat) % beat;
     }
 
     // Chroma, key, mode, brightness.

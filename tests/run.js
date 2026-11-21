@@ -132,6 +132,16 @@ demo.forEach((d) => {
   if (r.mode === d.truth.mode) modeHits++;
   test(`${d.song.title}: tempo ${d.truth.bpm} BPM (found ${r.bpm})`, () => ok(Math.abs(r.bpm - d.truth.bpm) / d.truth.bpm < 0.03, 'tempo off'));
 });
+test('the beat grid lands on the real beats (within 40 ms) for every demo song and the 2-minute song', () => {
+  // All these songs were made with beats exactly at k × (60 / BPM) from 0:00.
+  const songs = demo.map((d) => ({ name: d.song.title, ...readWav(path.join(ROOT, 'demo', d.song.file)), bpm: d.truth.bpm }));
+  const long = require('./synth-song.js').synthSong(22050); songs.push({ name: '2-minute song', x: long.x, sr: long.sr, bpm: 120 });
+  songs.forEach((sg) => {
+    const a = TD.music.analyzeSamples(sg.x, sg.sr), beat = 60 / sg.bpm, ph = ((a.beatOffset % beat) + beat) % beat;
+    const err = Math.min(ph, beat - ph);
+    ok(err < 0.04, `${sg.name}: ${(err * 1000).toFixed(0)} ms off the beat`);
+  });
+});
 console.log(`  info major/minor correct on ${modeHits}/${demo.length} songs (relative keys are the known weak spot; the user's «светлая/тёмная» overrides)`);
 test('user mood hint overrides the detected mode', () => {
   const m = TD.music.combineMusic({ bpm: 100, mode: 'minor', modeConfidence: 0.6, key: 'Am', energy: 0.5, valence: -0.3, brightness: 0.5 }, { moodHint: 'major' });
