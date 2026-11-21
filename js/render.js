@@ -160,15 +160,34 @@
       g.textAlign = 'left';
       g.fillStyle = rgba(ink, 0.25); g.fillRect(60, 120, W - 120, 1.5);
       // folder title, handwritten, always in the same place
+      // One line whenever it fits: the title shrinks (92 → 66 px) rather than wraps.
+      // A very long title takes two smaller lines in the same space, so the
+      // song line below always stays in the same place on every page.
+      const fontAt = (px) => `700 ${px}px Caveat, cursive`;
       let size = 92;
-      g.font = `700 ${size}px Caveat, cursive`;
-      let lines = wrap(g, day.title, W - 120);
-      while (lines.length > 2 && size > 60) { size -= 6; g.font = `700 ${size}px Caveat, cursive`; lines = wrap(g, day.title, W - 120); }
+      g.font = fontAt(size);
+      while (g.measureText(day.title).width > W - 120 && size > 66) { size -= 2; g.font = fontAt(size); }
+      let lines = [day.title];
+      if (g.measureText(day.title).width > W - 120) {
+        // Two lines; a one-letter preposition never ends a line ("…шаре / в Каппадокии").
+        const wrapTitle = () => {
+          const ls = wrap(g, day.title, W - 120);
+          for (let i = 0; i < ls.length - 1; i++) {
+            const words = ls[i].split(' '), last = words[words.length - 1];
+            if (words.length > 1 && /^[а-яёa-z]{1,2}$/i.test(last)) { ls[i] = words.slice(0, -1).join(' '); ls[i + 1] = last + ' ' + ls[i + 1]; }
+          }
+          return ls;
+        };
+        size = 66; g.font = fontAt(size);
+        lines = wrapTitle();
+        while ((lines.length > 2 || lines.some((l) => g.measureText(l).width > W - 120)) && size > 40) { size -= 2; g.font = fontAt(size); lines = wrapTitle(); }
+      }
       g.fillStyle = rgba(ink, 0.95);
-      lines.slice(0, 2).forEach((l, i) => g.fillText(l, 60, 1545 + i * size * 0.95));
-      // song + day labels
+      const ty = lines.length > 1 ? 1532 : 1545;
+      lines.slice(0, 2).forEach((l, i) => g.fillText(l, 60, ty + i * size * 0.95));
+      // song + day labels: the same place on every page
       const m = day.music || {};
-      const y0 = lines.length > 1 ? 1755 : 1700;
+      const y0 = 1700;
       g.font = '500 25px "IBM Plex Mono", monospace';
       g.fillStyle = rgba(ink, 0.85);
       const song = [day.song && day.song.title, day.song && day.song.artist].filter(Boolean).join(' — ') || 'песня дня';
