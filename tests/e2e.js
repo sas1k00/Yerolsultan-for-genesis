@@ -60,11 +60,19 @@ fs.mkdirSync(OUT, { recursive: true });
   await page.fill('textarea[name=text]', 'Гуляли по парку, всё в жёлтых листьях, было холодно, но мы пили какао и долго разговаривали.');
   await page.fill('input[name=date]', '2026-10-20');
   await page.setInputFiles('input[name=photos]', [path.join(__dirname, '../demo/photos/autumn-1.jpg'), path.join(__dirname, '../demo/photos/autumn-2.jpg')]);
-  await page.fill('input[name=link]', 'https://www.youtube.com/watch?v=example0001');
-  await page.fill('input[name=artist]', 'Frank Sinatra');
-  await page.fill('input[name=title]', 'The Way You Look Tonight');
-  await page.selectOption('select[name=genre]', 'jazz');
-  await page.fill('input[name=year]', '1964');
+  // A real video (Frank Sinatra, «The Way You Look Tonight"): the form fills in the song by itself.
+  await page.fill('input[name=link]', 'https://www.youtube.com/watch?v=h9ZGKALMMuc');
+  await page.waitForFunction(() => !/Ищу/.test(document.querySelector('#song-info').textContent) && /Нашлось|не получилось|впишите/i.test(document.querySelector('#song-info').textContent), null, { timeout: 25000 }).catch(() => {});
+  const auto = await page.evaluate(() => { const f = document.querySelector('#day-form'); return { artist: f.artist.value, title: f.title.value, year: f.year.value, genre: f.genre.value }; });
+  const online = /Нашлось/.test(await page.textContent('#song-info'));
+  console.log('song filled in from the link:', online ? JSON.stringify(auto) : '(song services unreachable: typed by hand)');
+  if (online && (auto.artist !== 'Frank Sinatra' || auto.year !== '1964')) errors.push('autofill: ' + JSON.stringify(auto));
+  if (!online) {
+    await page.fill('input[name=artist]', 'Frank Sinatra');
+    await page.fill('input[name=title]', 'The Way You Look Tonight');
+    await page.selectOption('select[name=genre]', 'jazz');
+    await page.fill('input[name=year]', '1964');
+  }
   await page.click('label.tap:has(input[name=moodHint][value=major])'); // the big button, as a person taps it
   await page.check('input[name=tempoHint][value=slow]');
   await page.click('button[type=submit]');
