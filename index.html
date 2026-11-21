@@ -49,8 +49,9 @@
         <div class="song-grid">
           <label>Ссылка <input type="url" name="link" placeholder="YouTube, Spotify, Яндекс Музыка…"></label>
           <label>или аудиофайл <input type="file" name="audio" accept="audio/*"></label>
-          <label>Любимый момент <input name="start" placeholder="1:12" inputmode="numeric" pattern="[0-9:hms]*"
-            title="С какого места включать песню. Для файла можно не указывать: система найдёт сама. Для YouTube можно вставить ссылку «Поделиться → Начало»."></label>
+          <div class="moment-field"><label>Любимый момент <input name="start" placeholder="1:12" inputmode="numeric" pattern="[0-9:hms]*"
+            title="С какого места включать песню. Для файла можно не указывать: система найдёт сама."></label>
+            <button type="button" class="btn btn-ghost" id="pick-moment" disabled title="Добавьте ссылку YouTube или аудиофайл">Выбрать на слух</button></div>
           <label>Исполнитель <input name="artist" placeholder="Frank Sinatra"></label>
           <label>Название <input name="title" placeholder="The Way You Look Tonight"></label>
           <label>Жанр <select name="genre"></select></label>
@@ -104,6 +105,7 @@
 <script src="js/render.js"></script>
 <script src="js/store.js"></script>
 <script src="js/voice.js"></script>
+<script src="js/moment.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

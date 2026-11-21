@@ -50,7 +50,11 @@
     const user = TD.music.parseTime(songIn.start);
     if (dec) {
       const dur = dec.mono.length / dec.sr;
-      if (user != null) { const st = Math.max(0, Math.min(user, dur - Math.min(VIDEO_SECS, dur))); return { start: st, end: st + Math.min(VIDEO_SECS, dur), length: Math.min(VIDEO_SECS, dur), from: 'user' }; }
+      if (user != null) {
+        const len = Math.min(VIDEO_SECS, dur);
+        const st = Math.max(0, Math.min(TD.moment.snapToBeat(user, music.bpm, music.beatOffset), dur - len));
+        return { start: +st.toFixed(3), end: +(st + len).toFixed(3), length: len, from: 'user' };
+      }
       return { ...TD.music.findMoment(dec.mono, dec.sr, { length: VIDEO_SECS, targetEnergy: design.mood.energy, bpm: music.bpm }), from: 'auto' };
     }
     const from = user != null ? 'user' : link && link.start != null ? 'link' : 'default';
@@ -70,21 +74,7 @@
   }
 
   // ------------------------------------------------------------ YouTube ---
-  let ytApi = null;
-  function loadYouTube() {
-    if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
-    if (ytApi) return ytApi;
-    ytApi = new Promise((res, rej) => {
-      const prev = window.onYouTubeIframeAPIReady;
-      window.onYouTubeIframeAPIReady = () => { if (prev) prev(); res(window.YT); };
-      const sc = document.createElement('script');
-      sc.src = 'https://www.youtube.com/iframe_api';
-      sc.onerror = () => { ytApi = null; rej(new Error('нет связи с YouTube')); };
-      document.head.appendChild(sc);
-      setTimeout(() => { ytApi = null; rej(new Error('YouTube не ответил')); }, 12000);
-    });
-    return ytApi;
-  }
+  const loadYouTube = () => TD.moment.loadYouTube(); // one loader for the page and the moment window
   /** Record this tab (Chrome): video cropped to the page of the day, with the tab's sound. */
   async function captureTab(el) {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) throw new Error('браузер не умеет записывать вкладку');
@@ -224,6 +214,19 @@
         : file ? 'По желанию: анализ звука это слышит, но ваш ответ главнее.' : 'Два касания, и песня влияет на страницу.';
     };
     f.link.addEventListener('input', updateFeel); f.audio.addEventListener('change', updateFeel); updateFeel();
+    // "Выбрать на слух": listen to the song in a window right here and pick the moment.
+    const pickBtn = $('#pick-moment');
+    const updatePick = () => {
+      const ok = TD.moment.canPick(TD.music.parseLink(f.link.value.trim()), f.audio.files[0]);
+      pickBtn.disabled = !ok;
+      pickBtn.title = ok ? 'Послушать песню и выбрать момент' : 'Работает со ссылкой YouTube или аудиофайлом';
+    };
+    f.link.addEventListener('input', updatePick); f.audio.addEventListener('change', updatePick); updatePick();
+    pickBtn.onclick = async () => {
+      const r = await TD.moment.pick({ link: TD.music.parseLink(f.link.value.trim()), file: f.audio.files[0] || null,
+        start: TD.music.parseTime(f.start.value), length: VIDEO_SECS });
+      if (r) f.start.value = fmtTime(r.start);
+    };
     drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
     drop.ondragleave = () => drop.classList.remove('over');
     drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files); };
@@ -320,9 +323,9 @@
         </div>
         ${link ? `<div class="embed">${link.youtube ? '<div id="yt"></div>' : link.embed ? `<iframe src="${esc(link.embed)}" allow="autoplay; encrypted-media; clipboard-write" loading="lazy" title="Песня дня"></iframe>` : ''}
           <a class="btn btn-ghost" href="${esc(link.open)}" target="_blank" rel="noopener">Открыть песню · ${esc(link.platform)}</a></div>` : ''}
-        ${s.file || (link && link.youtube) ? `<div class="moment"><label>Момент песни <input id="mo-start" size="5" value="${fmtTime((day.moment || {}).start || 0)}" aria-label="С какого места играть песню (мм:сс)"></label>
-          <button class="btn btn-ghost" id="mo-save">Сохранить</button>
-          <span class="lbl-sm" id="mo-from">${{ auto: 'найден автоматически', user: 'выбран вами', link: 'из ссылки', default: 'с начала песни' }[(day.moment || {}).from] || ''}</span></div>` : ''}
+        ${TD.moment.canPick(link, s.file) ? `<div class="moment"><span>Момент песни <b id="mo-range">${fmtTime((day.moment || {}).start || 0)}–${fmtTime(((day.moment || {}).start || 0) + ((day.moment || {}).length || VIDEO_SECS))}</b></span>
+          <span class="lbl-sm" id="mo-from">${{ auto: 'найден автоматически', user: 'выбран вами', link: 'из ссылки', default: 'с начала песни' }[(day.moment || {}).from] || ''}</span>
+          <button class="btn" id="mo-pick">Выбрать момент</button></div>` : ''}
       </div>
       <div class="side">
         <div class="date">${fmtDate(day.date)}</div>
@@ -426,19 +429,24 @@
       ytReady.finally(() => { cover.disabled = false; cover.innerHTML = label; });
     }
 
-    // Change the moment by hand (saved with the day).
-    if ($('#mo-save')) $('#mo-save').onclick = async () => {
-      const t = TD.music.parseTime($('#mo-start').value);
-      if (t == null) return toast('Время в формате 1:12');
+    // Change the moment: listen in a window and pick it (saved with the day).
+    if ($('#mo-pick')) $('#mo-pick').onclick = async () => {
+      const wasPlaying = playing;
+      if (playing) pause();
       const len = mo.length || VIDEO_SECS;
+      const r = await TD.moment.pick({ link, file: s.file || null, start: mo.start || 0, length: len, energy: D.mood.energy,
+        snap: s.file && D.motion.bpm ? { bpm: D.motion.bpm, beatOffset: D.motion.beatOffset } : null });
+      if (!r) { if (wasPlaying) await play(); return; }
+      const t = r.start;
       Object.assign(mo, { start: t, end: t + len, length: len, from: 'user', onBeat: false, short: false });
       day.moment = mo;
       const i = D.why.findIndex((w) => w.group === 'Песня');
       if (i >= 0) D.why[i] = momentWhy(mo, D);
       await TD.store.put(day);
       $('#mo-from').textContent = 'выбран вами';
+      $('#mo-range').textContent = `${fmtTime(t)}–${fmtTime(t + len)}`;
       delete pp.dataset.started;
-      if (playing) await play();
+      if (wasPlaying) await play();
       toast(`Песня теперь начинается с ${fmtTime(t)}`);
     };
 

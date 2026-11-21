@@ -3,7 +3,7 @@ const vm = require('vm');
 const fs = require('fs');
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
-for (const f of ['lexicon', 'text', 'naming', 'photo', 'music', 'system', 'store']) {
+for (const f of ['lexicon', 'text', 'naming', 'photo', 'music', 'system', 'store', 'moment']) {
   vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'js', f + '.js'), 'utf8'), { filename: f + '.js' });
 }
 const TD = globalThis.TD;
@@ -193,6 +193,15 @@ test('the chosen part repeats in the song (like a chorus)', () =>
   ok(TD.music.findMoment(song.x, song.sr, { length: 30, targetEnergy: 0.6, bpm: 120 }).repeats >= 2));
 test('the moment always fits inside the song', () => {
   [15, 30, 45, 60].forEach((L) => { const m = TD.music.findMoment(song.x, song.sr, { length: L, targetEnergy: 0.5, bpm: 120 }); ok(m.start >= 0 && m.end <= m.duration + 1e-6, `${L}: ${m.start}–${m.end}`); });
+});
+test('a hand-picked moment snaps onto the beat grid (120 BPM, offset 0.1)', () => {
+  eq(TD.moment.snapToBeat(50.27, 120, 0.1), 50.1); eq(TD.moment.snapToBeat(50.4, 120, 0.1), 50.6); eq(TD.moment.snapToBeat(50.4, null, 0), 50.4);
+});
+test('the loudness strip shows the chorus louder than the intro', () => {
+  const lv = TD.moment.loudness(song.x, song.sr);
+  const avg = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += lv[i]; return s / (b - a); };
+  ok(lv.length === Math.floor(122 / 0.5), 'one value per half second');
+  ok(avg(64, 96) > 3 * avg(0, 24), `chorus ${avg(64, 96).toFixed(2)} vs intro ${avg(0, 24).toFixed(2)}`);
 });
 test('a song shorter than the video plays from the start', () => {
   const m = TD.music.findMoment(new Float32Array(22 * 16000), 16000, { length: 30 });
