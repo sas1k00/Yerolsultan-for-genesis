@@ -74,8 +74,9 @@ fs.mkdirSync(OUT, { recursive: true });
   // The YouTube area becomes the synced player, or a plain player if YouTube is unreachable.
   await page.waitForFunction(() => !document.querySelector('#play').disabled, null, { timeout: 20000 });
   const hasEmbed = await page.locator('.embed iframe').count();
-  const momentField = await page.inputValue('#mo-start');
-  console.log('form day title:', formTitle, '| youtube player:', hasEmbed, '| song moment field:', momentField);
+  const momentField = await page.textContent('#mo-range'); // the moment line; «Выбрать момент» opens the window
+  if (!(await page.$('#mo-pick'))) errors.push('no «Выбрать момент» button on a YouTube day');
+  console.log('form day title:', formTitle, '| youtube player:', hasEmbed, '| song moment:', momentField);
   if (!hasEmbed) errors.push('no YouTube player on a YouTube day');
   if (formTitle !== 'Осенний парк и какао') errors.push('unexpected title from form: ' + formTitle);
   await page.click('#play');
