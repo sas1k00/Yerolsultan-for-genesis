@@ -67,6 +67,28 @@ test('the lexicon is never modified by an analysis', () => {
   ok(!TD.LEX.GAZETTEER.some((g) => g.until), 'gazetteer entry was written to');
 });
 
+console.log('Travel from Kazakhstan, activities, gentle negation');
+test('activities open the folder name: «Снорклинг на Мальдивах с мужем», «Умра в Мекке с мамой»', () => {
+  eq(title('Отпуск на Мальдивах с мужем. Утром снорклинг у рифа: черепахи прямо под нами.', '2026-02-10'), 'Снорклинг на Мальдивах с мужем');
+  eq(title('Умра с мамой. В Мекке было очень спокойно, мы долго молились у Каабы.', '2026-04-15'), 'Умра в Мекке с мамой');
+});
+test('rafting is «по реке», and a trip to БАО is named', () => {
+  eq(title('Сплавлялись с коллегами по реке Или, было очень весело, хотя все промокли.', '2026-07-01'), 'Сплав по реке с коллегами');
+  eq(title('Ездили с семьёй на Большое Алматинское озеро, было холодно, но красиво.', '2026-08-02'), 'Поездка на БАО с семьёй');
+});
+test('popular destinations with grammar: «во Вьетнам», «на Мальдивах», «в Нячанге»', () => {
+  eq(title('Поехали с подругами во Вьетнам. Ели фо, катались на байке.', '2026-03-05'), 'Поездка во Вьетнам с подругами');
+  ok(TD.analyzeText('Целый день в Нячанге, ели фо.').places.some((p) => p.loc === 'в Нячанге'));
+  ok(TD.analyzeText('Ели фо и том ям.').details.length === 2, 'фо and том ям are food');
+});
+test('«кричали от восторга» is joy', () => ok(TD.analyzeText('Кричали от восторга.').valence > 0.4));
+test('negating a mild word is neutral; «давно так не отдыхали» is strongly positive', () => {
+  eq(TD.analyzeText('Почти не разговаривали.').hits.length, 0);
+  ok(TD.analyzeText('Давно так не отдыхали.').valence > 0.3);
+  ok(TD.analyzeText('Было совсем не весело.').valence < 0, 'a strong word still turns over');
+  ok(TD.analyzeText('Мы никуда не спешили.').valence > 0, 'not hurrying is calm');
+});
+
 console.log('Kazakh and mixed Kazakh–Russian');
 test('Kazakh letters stay inside words', () => eq(TD.textUtil.tokenize('Айгеріммен қуаныштымын').join(' '), 'айгеріммен қуаныштымын'));
 test('pure Kazakh: «День в парке с Айгерім», joyful, language kk', () => {

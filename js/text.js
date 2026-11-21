@@ -37,6 +37,18 @@
       .replace(/ата-ана\S*/g, ' __parents ')
       .replace(/наурыз\s*(мейрам|көже|коже|той)\S*|наурызды\s+тойла\S*|(праздн\S*|на)\s+наурыз\S*/g, ' __nauryz ')
       .replace(/күн\s+бат\S*/g, ' закат ')
+      // "кричали от восторга" is joy, not a quarrel; "никуда не спешили" is calm, not "not hurried"
+      .replace(/(крич|ор|визж|вопи)\S*\s+от\s+(восторг|радост|счасть|удовольств)\S*/g, ' __joyshout ')
+      .replace(/(никуда\s+)?не\s+(спеш|тороп)\S*|без\s+спешки/g, ' неспешно ')
+      // "давно так не отдыхали", "никогда так не смеялись" = "never this good": an intensifier, not a negation
+      .replace(/(давно|никогда)\s+(ещ[её]\s+|уже\s+)?так\s+не\s+/g, ' очень ')
+      // multi-word places and activities
+      .replace(/воздушн\S*\s+шар\S*/g, ' __balloon ')
+      .replace(/(прыж\S*|прыгн\S*|прыгал\S*)\s+с\s+парашют\S*/g, ' __skydive ')
+      .replace(/велик\S*\s+(китайск\S*\s+)?стен\S*/g, ' __greatwall ')
+      .replace(/рисов\S*\s+террас\S*/g, ' __riceterraces ')
+      .replace(/больш\S*\s+алматинск\S*\s+озер\S*/g, ' бао ')
+      .replace(/том[\s-]+ям\S*/g, ' __tomyam ')
       // "көңілім жоқ" = not in the mood; "көңілім көтерілді" = my mood lifted
       .replace(/көңіл\S*\s+жоқ/g, ' көңілсіз ').replace(/көңіл\S*\s+көтеріл\S*/g, ' көңілді ');
     return t.split(new RegExp(`[^a-z${LOW}0-9_'’]+`, 'i')).filter(Boolean);
@@ -94,7 +106,12 @@
         let mod = 1, note = '';
         const next = tk.slice(i + 1, i + 3);
         const kkNeg = e.kk && e.s[0] !== '=' && L.KK_NEG_SUFFIX && L.KK_NEG_SUFFIX.test(tok.slice(e.s.length));
-        if (prev.some((p) => L.NEGATORS.includes(p)) || kkNeg || next.some((p) => (L.NEGATORS_AFTER || []).includes(p))) { mod = -0.6; note = 'отрицание'; }
+        if (prev.some((p) => L.NEGATORS.includes(p)) || kkNeg || next.some((p) => (L.NEGATORS_AFTER || []).includes(p))) {
+          // Negating a mild word makes it neutral ("почти не разговаривали" at a lake is peace, not sadness);
+          // only a strong word turns over ("не весело", "не грустно").
+          if (Math.abs(e.v) < 0.4) return;
+          mod = -0.6; note = 'отрицание';
+        }
         if (prev.some((p) => L.INTENSIFIERS.includes(p))) { mod *= 1.4; note = note || 'усиление'; }
         if (prev.some((p) => L.SOFTENERS.includes(p))) { mod *= 0.6; note = note || 'смягчение'; }
         const turn = cut < 0 ? 1 : i >= cut ? 1.4 : 0.7;

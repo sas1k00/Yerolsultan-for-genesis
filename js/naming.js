@@ -46,15 +46,15 @@
       title = `${event.nom} ${person.with}`; rule.push('событие + люди');
     } else if (tr.trip && dest && (dest[tr.trip.prep] || dest.to)) {
       // «Поездка в Памуккале с братом», «Летний отпуск в Анталье»
-      const where = dest[tr.trip.prep] || dest.to;
+      const where = dest[tr.trip.prep] || (tr.trip.prep === 'along' ? dest.loc : null) || dest.to;
       if (person) { title = `${tr.trip.nom} ${where} ${person.with}`; rule.push('поездка + место + люди'); }
       else { title = `${adjFor(tr.trip.g)} ${tr.trip.nom} ${where}`; rule.push('сезон + поездка + место'); }
     } else if (tr.transport && dest && dest.until) {
       // «Ночь в поезде до Алматы»
       title = `${timeNoun} ${tr.transport.loc} ${dest.until}`; timeFirst = true; rule.push('время суток + транспорт + куда');
-    } else if (tr.trip && !dest && place && place[tr.trip.prep] && !place.transport) {
-      // «Поездка в горы с друзьями»
-      const where = place[tr.trip.prep];
+    } else if (tr.trip && !dest && place && (place[tr.trip.prep] || (tr.trip.prep === 'along' && place.loc)) && !place.transport) {
+      // «Поездка в горы с друзьями», «Сплав по реке с коллегами»
+      const where = place[tr.trip.prep] || place.loc;
       title = person ? `${tr.trip.nom} ${where} ${person.with}` : `${adjFor(tr.trip.g)} ${tr.trip.nom} ${where}`;
       rule.push(person ? 'поездка + место + люди' : 'сезон + поездка + место');
     } else if (event && place && !place.home) {
