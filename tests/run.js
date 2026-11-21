@@ -3,7 +3,7 @@ const vm = require('vm');
 const fs = require('fs');
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
-for (const f of ['lexicon', 'text', 'naming', 'photo', 'music', 'system', 'store', 'moment']) {
+for (const f of ['lexicon', 'text', 'naming', 'photo', 'music', 'system', 'store', 'moment', 'render']) {
   vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'js', f + '.js'), 'utf8'), { filename: f + '.js' });
 }
 const TD = globalThis.TD;
@@ -332,6 +332,43 @@ test('mixed days: interlude shots and transitions exist for both techniques', ()
   ok(d.palette.windowBgs.cutout && d.palette.windowBgs.ma, 'window backgrounds');
   ok(d.motion.fadeBy.ma > d.motion.fadeBy.cutout, 'Ma fades in slower than cut-outs');
 });
+
+console.log('Photos: nothing important is cropped');
+{
+  const W = 64, H = 48;
+  const img = (draw) => { const d = new Uint8ClampedArray(W * H * 4); for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4, c = draw(x / W, y / H); d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255; } return d; };
+  const bg = (u, v) => (v < 0.45 ? [120, 170, 220] : [70, 120, 60]);
+  const person = (cx) => (u, v) => (Math.abs(u - cx) < 0.045 && v > 0.3 && v < 0.4 ? [214, 160, 130] : Math.abs(u - cx) < 0.06 && v >= 0.4 && v < 0.85 ? [60, 90, 160] : null);
+  const group = [0.14, 0.32, 0.5, 0.68, 0.86].map(person);
+  const fGroup = TD.photo.focusFromPixels(img((u, v) => { for (const p of group) { const c = p(u, v); if (c) return c; } return bg(u, v); }), W, H);
+  const fOne = TD.photo.focusFromPixels(img((u, v) => person(0.78)(u, v) || bg(u, v)), W, H);
+  const fLand = TD.photo.focusFromPixels(img((u, v) => [100 + 60 * v, 140 + 40 * v, 200 - 80 * v]), W, H);
+  test('the subject of a group photo holds every face', () => { ok(fGroup.people); ok(fGroup.x0 <= 0.095 && fGroup.x1 >= 0.905, JSON.stringify(fGroup)); });
+  test('one person off to the side is the subject', () => ok(fOne.people && fOne.x0 > 0.6 && fOne.x1 < 0.95, JSON.stringify(fOne)));
+  test('a plain landscape has no subject and may be cropped to fill', () => ok(fLand.diffuse && !fLand.people));
+  const sand = [222, 190, 150], sky = [120, 170, 220];
+  const onBeach = (draw) => TD.photo.focusFromPixels(img((u, v) => draw(u, v) || (v < 0.45 ? sky : sand)), W, H);
+  test('sand is not skin: one person on a beach is still the subject', () => {
+    const f = onBeach(person(0.78)); ok(f.people && f.x0 > 0.6 && f.x1 < 0.95, JSON.stringify(f));
+  });
+  test('a group on a beach keeps every face', () => {
+    const f = onBeach((u, v) => { for (const p of group) { const c = p(u, v); if (c) return c; } return null; });
+    ok(f.x0 <= 0.095 && f.x1 >= 0.905, JSON.stringify(f));
+  });
+  test('unsure is never cropped: skin colour anywhere means «not a plain landscape»', () => ok(!onBeach(() => null).diffuse));
+  // A horizontal 4:3 group photo in the tall page window (960×1290): every face stays inside.
+  const inside = (pl, f, w, h) => pl.x + f.x0 * pl.w >= -0.5 && pl.x + f.x1 * pl.w <= w + 0.5 && pl.y + f.y0 * pl.h >= -0.5 && pl.y + f.y1 * pl.h <= h + 0.5;
+  test('a wide group photo in the tall window: zoomed out, nobody cut off', () => {
+    const pl = TD.render.placeIn(1600, 1200, 960, 1290, fGroup);
+    ok(inside(pl, fGroup, 960, 1290), JSON.stringify(pl)); ok(!pl.covers, 'the rest is the blurred copy');
+  });
+  test('one person off to the side: the photo still fills the window, the person inside it', () => {
+    const pl = TD.render.placeIn(1600, 1200, 960, 1290, fOne);
+    ok(pl.covers, 'fills'); ok(inside(pl, fOne, 960, 1290), JSON.stringify(pl));
+  });
+  test('a plain landscape fills the window', () => ok(TD.render.placeIn(1600, 1200, 960, 1290, fLand).covers));
+  test('the slow zoom never pushes the subject out', () => ok(inside(TD.render.placeIn(1600, 1200, 960, 1290, fOne, 1.1), fOne, 960, 1290)));
+}
 
 console.log('Storage helpers');
 test('zip CRC-32 of "123456789" is CBF43926', () => eq(TD.store.crc32(new TextEncoder().encode('123456789')).toString(16).toUpperCase(), 'CBF43926'));

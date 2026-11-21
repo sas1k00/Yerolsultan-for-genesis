@@ -243,8 +243,10 @@
       if (k === 'brush') return TD.color.mix(light, PAPER, 0.3);
       if (k === 'geometry') return TD.color.mix(dark, [20, 26, 43], 0.6);
       if (k === 'cutout') {
-        const [h, s] = rgb2hsl(accent);
-        return hsl2rgb([h + 25, clamp(Math.max(s, 0.55), 0, 0.85), 0.66]);
+        // Paper in the day's own colour: the most present colourful tone of the photos, made pale.
+        const own = (p.palette || []).slice().sort((x, y) => y.share * (0.3 + rgb2hsl(y.rgb)[1]) - x.share * (0.3 + rgb2hsl(x.rgb)[1]))[0];
+        const [h, s] = rgb2hsl(own ? gradeFn(own.rgb) : accent);
+        return hsl2rgb([h, clamp(s, 0.25, 0.55), 0.8]);
       }
       return TD.color.mix(PAPER, rgb2hsl(light)[1] > 0.1 ? hsl2rgb([rgb2hsl(light)[0], 0.12, 0.88]) : light, 0.25);
     };
@@ -287,6 +289,12 @@
       group: 'Композиция', input: `${energy < 0.5 ? 'Медленный' : 'Быстрый'} ${m.mode === 'minor' ? 'минорный' : 'мажорный'} день`,
       rule: `Пустое пространство в кадре: ${pct(air)}`,
       result: air > 0.4 ? 'больше воздуха и тишины' : 'кадр плотный и наполненный',
+    });
+
+    why.push({
+      group: 'Композиция', input: 'Главное на фото',
+      rule: 'Люди, лица и детали всегда целиком в кадре: обрезка только там, где нет ничего важного; иначе фото уменьшается, а свободное место заполняет его же размытая копия',
+      result: 'день узнаётся по своим людям и местам',
     });
 
     // ---- 6. texture ---------------------------------------------------------

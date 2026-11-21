@@ -25,11 +25,56 @@
     return { x: (w - dw) * px, y: (h - dh) * py, w: dw, h: dh };
   }
 
-  /** Cover-crop an image into w×h and grade every pixel through a 6-bit LUT. */
-  function graded(img, w, h, gradeFn, map) {
-    const c = mk(w, h), ctx = c.getContext('2d', { willReadFrequently: true });
-    const r = coverRect(img.naturalWidth || img.width, img.naturalHeight || img.height, c.width, c.height);
-    ctx.drawImage(img, r.x, r.y, r.w, r.h);
+  /* Where to draw an image in a w×h area so its important part stays visible
+   * (focus = TD.photo.focusOf). Crop to fill the area only while the whole
+   * subject still fits; otherwise zoom out just enough to keep it, and leave
+   * the rest for a soft blurred copy of the same photo. A photo with no clear
+   * subject (an even landscape) fills the area. anchorY: where the subject's
+   * centre should sit vertically (0.42 leaves room for a caption below). */
+  function placeIn(iw, ih, w, h, f, zoom = 1, anchorY = 0.5) {
+    f = f || { x0: 0.2, x1: 0.8, y0: 0.2, y1: 0.8, cx: 0.5, cy: 0.5, diffuse: true };
+    const cover = Math.max(w / iw, h / ih), contain = Math.min(w / iw, h / ih);
+    let s;
+    if (f.diffuse) s = cover * zoom;
+    else {
+      const bw = Math.max(0.05, f.x1 - f.x0) * iw, bh = Math.max(0.05, f.y1 - f.y0) * ih;
+      const fit = Math.min(w / (bw * 1.06), h / (bh * 1.06)); // the subject plus a 3 % margin each side
+      s = fit >= cover ? Math.min(cover * zoom, fit) : Math.max(fit, contain);
+    }
+    const dw = iw * s, dh = ih * s;
+    const fx = f.diffuse ? f.cx : (f.x0 + f.x1) / 2, fy = f.diffuse ? f.cy : (f.y0 + f.y1) / 2;
+    let x = w / 2 - fx * dw, y = h * anchorY - fy * dh;
+    x = dw >= w ? clamp(x, w - dw, 0) : (w - dw) / 2;
+    y = dh >= h ? clamp(y, h - dh, 0) : clamp(y, 0, h - dh);
+    return { x, y, w: dw, h: dh, covers: dw >= w - 0.5 && dh >= h - 0.5 };
+  }
+
+  /** Draw a graded photo into area R of g, keeping its subject visible (see placeIn). */
+  function drawFocused(g, src, R, zoom = 1, anchorY = 0.5) {
+    const p = placeIn(src.width, src.height, R.w, R.h, src.focus, zoom, anchorY);
+    g.save();
+    g.beginPath(); g.rect(R.x, R.y, R.w, R.h); g.clip();
+    if (!p.covers) {
+      // The space the photo does not reach: the same photo, blurred and a little larger.
+      const c = coverRect(src.tiny.width, src.tiny.height, R.w, R.h, 1.12);
+      g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      g.drawImage(src.tiny, R.x + c.x, R.y + c.y, c.w, c.h);
+      g.shadowColor = 'rgba(0,0,0,0.28)'; g.shadowBlur = 22; g.shadowOffsetY = 6;
+    }
+    g.drawImage(src, R.x + p.x, R.y + p.y, p.w, p.h);
+    g.restore();
+    // Where the subject ended up (area coordinates), so decorations can stay off it.
+    const f = src.focus || {};
+    return { x0: R.x + p.x + (f.x0 || 0) * p.w, x1: R.x + p.x + (f.x1 == null ? 1 : f.x1) * p.w,
+      y0: R.y + p.y + (f.y0 || 0) * p.h, y1: R.y + p.y + (f.y1 == null ? 1 : f.y1) * p.h };
+  }
+
+  /** Grade a whole photo (its own shape, nothing cropped) through a 6-bit LUT.
+   *  The result carries .focus and a tiny copy (.tiny) for the blurred backdrop. */
+  function graded(img, maxSide, gradeFn, map, focus) {
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height, k = Math.min(1, maxSide / Math.max(iw, ih));
+    const c = mk(iw * k, ih * k), ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, c.width, c.height);
     const id = ctx.getImageData(0, 0, c.width, c.height), d = id.data;
     const lut = new Int32Array(262144).fill(-1);
     for (let i = 0; i < d.length; i += 4) {
@@ -43,6 +88,10 @@
       d[i] = (v >> 16) & 255; d[i + 1] = (v >> 8) & 255; d[i + 2] = v & 255;
     }
     ctx.putImageData(id, 0, 0);
+    c.focus = focus || null;
+    const t = mk(Math.max(2, c.width / 24), Math.max(2, c.height / 24));
+    t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
+    c.tiny = t;
     return c;
   }
 
@@ -57,19 +106,6 @@
     return lines;
   }
 
-  function smoothBlob(ctx, pts) {
-    const n = pts.length;
-    ctx.beginPath();
-    const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    let m0 = mid(pts[n - 1], pts[0]);
-    ctx.moveTo(m0[0], m0[1]);
-    for (let i = 0; i < n; i++) {
-      const m = mid(pts[i], pts[(i + 1) % n]);
-      ctx.quadraticCurveTo(pts[i][0], pts[i][1], m[0], m[1]);
-    }
-    ctx.closePath();
-  }
-
   function createPlayer(canvas, opts) {
     const { day, design: D, images } = opts;
     const ctx = canvas.getContext('2d');
@@ -79,7 +115,9 @@
     const rand = TD.system.rng(D.seed);
     const n = Math.max(1, images.length);
     const st = { raf: 0, playing: false, clock: 0, t0: 0, audio: null, onTick: null, offset: 0, bo: null };
-    let staticLayer, layersBy = {}, grainTile, shapesBy = {}, parts = [];
+    let staticLayer, layersBy = {}, grainTile, shapesBy = {}, parts = [], focus = [], subject = null;
+    // The cut-out card: the whole photo on paper in the upper part of the window.
+    const CARD = { x: WIN.w * 0.07, y: WIN.h * 0.04, w: WIN.w * 0.86, h: WIN.h * 0.66, inset: 18 };
 
     // Mixed days: every N-th shot replays the previous photo in the second
     // technique (the same moment remembered with the other feeling).
@@ -167,8 +205,10 @@
 
     function buildBrush(img, idx) {
       const w = WIN.w, h = WIN.h, k = 4;
-      const small = graded(img, w / k, h / k, gradeFn);
-      const sd = small.getContext('2d').getImageData(0, 0, small.width, small.height).data;
+      // The photo placed with its subject kept (caption room below), then painted over.
+      const small = mk(w / k, h / k), sctx = small.getContext('2d', { willReadFrequently: true });
+      drawFocused(sctx, graded(img, 520, gradeFn, null, focus[idx]), { x: 0, y: 0, w: small.width, h: small.height }, 1, 0.42);
+      const sd = sctx.getImageData(0, 0, small.width, small.height).data;
       const sw = small.width, sh = small.height;
       const px = (x, y) => { x = clamp(x | 0, 0, sw - 1); y = clamp(y | 0, 0, sh - 1); const i = (y * sw + x) * 4; return [sd[i], sd[i + 1], sd[i + 2]]; };
       const base = mk(w, h), bg = base.getContext('2d');
@@ -202,17 +242,17 @@
       return { variants };
     }
 
-    function buildGeometry(img) {
+    function buildGeometry(img, idx) {
       const dk = mix(P.dark, [16, 20, 36], 0.55), lt = mix(P.light, [236, 230, 214], 0.35);
-      const duo = graded(img, WIN.w * 0.6, WIN.h * 0.6, gradeFn, (o) => {
+      const duo = graded(img, 1000, gradeFn, (o) => {
         let l = lum(o); l = l * l * (3 - 2 * l); l = clamp((l - 0.5) * 1.35 + 0.5, 0, 1);
         return mix(dk, lt, l).map(Math.round);
-      });
+      }, focus[idx]);
       return { duo };
     }
 
-    function buildCutout(img) { return { photo: graded(img, WIN.w * 0.75, WIN.h * 0.75, gradeFn) }; }
-    function buildMa(img) { return { photo: graded(img, WIN.w * 0.7, WIN.h * 0.7, gradeFn) }; }
+    function buildCutout(img, idx) { return { photo: graded(img, 1100, gradeFn, null, focus[idx]) }; }
+    function buildMa(img, idx) { return { photo: graded(img, 800, gradeFn, null, focus[idx]) }; }
 
     function buildShapes(tech) {
       const out = [];
@@ -231,13 +271,16 @@
       } else if (tech === 'cutout') {
         const bgH = rgb2hsl(bgOf('cutout'))[0];
         const cols = [...triad.filter((c) => Math.abs(((rgb2hsl(c)[0] - bgH + 540) % 360) - 180) > 40), [250, 246, 238], [30, 30, 40], ...P.colors.filter((c) => rgb2hsl(c)[1] > 0.4)];
-        const count = Math.round(5 + 6 * D.mood.energy);
+        const count = Math.round(6 + 6 * D.mood.energy);
         for (let i = 0; i < count; i++) {
-          const edge = r() < 0.75;
+          // Only in the margins: the sides (peeking in from the edge) and the band below the card.
+          const zone = i % 3, side = r() < 0.5;
+          const pos = zone < 2
+            ? { x: (side ? -0.02 + r() * 0.06 : 0.96 + r() * 0.06) * WIN.w, y: (0.06 + r() * 0.86) * WIN.h, s: 40 + r() * 50 }
+            : { x: r() * WIN.w, y: (0.74 + r() * 0.24) * WIN.h, s: 50 + r() * 80 };
           out.push({
-            type: r() < 0.6 ? 'leaf' : 'dot', lobes: 3 + Math.floor(r() * 5),
-            x: edge ? (r() < 0.5 ? r() * 0.25 : 0.75 + r() * 0.25) * WIN.w : r() * WIN.w, y: r() * WIN.h,
-            s: 50 + r() * 130, col: cols[Math.floor(r() * cols.length)] || [250, 246, 238], rot: r() * Math.PI * 2,
+            type: r() < 0.6 ? 'leaf' : 'dot', lobes: 3 + Math.floor(r() * 5), ...pos,
+            col: cols[Math.floor(r() * cols.length)] || [250, 246, 238], rot: r() * Math.PI * 2,
             ph: r() * Math.PI * 2, depth: 0.2 + r() * 0.35,
           });
         }
@@ -258,11 +301,12 @@
 
     async function prepare() {
       await fontsReady();
+      focus = images.map((img) => (TD.photo.focusOf ? TD.photo.focusOf(img) : null));
       staticLayer = buildStatic();
       grainTile = buildGrain();
       (SEC ? [D.technique, SEC] : [D.technique]).forEach((tech) => {
-        layersBy[tech] = images.map((img, i) => (tech === 'brush' ? buildBrush(img, i) : tech === 'geometry' ? buildGeometry(img)
-          : tech === 'cutout' ? buildCutout(img) : buildMa(img)));
+        layersBy[tech] = images.map((img, i) => (tech === 'brush' ? buildBrush(img, i) : tech === 'geometry' ? buildGeometry(img, i)
+          : tech === 'cutout' ? buildCutout(img, i) : buildMa(img, i)));
         if (!layersBy[tech].length) layersBy[tech] = [null];
         shapesBy[tech] = buildShapes(tech);
       });
@@ -293,32 +337,36 @@
         else if (lay === 1) g.arc(w * 0.56, h * 0.42, w * 0.38, 0, Math.PI * 2);
         else { g.moveTo(0, h * 0.22); g.lineTo(w, h * 0.04); g.lineTo(w, h * 0.6); g.lineTo(0, h * 0.8); g.closePath(); }
         g.clip();
-        const rr = coverRect(src.width, src.height, w, h, z);
-        g.drawImage(src, rr.x, rr.y, rr.w, rr.h);
+        const R = lay === 0 ? { x: w * 0.06, y: h * 0.07, w: w * 0.64, h: h * 0.6 }
+          : lay === 1 ? { x: w * 0.18, y: h * 0.42 - w * 0.38, w: w * 0.76, h: w * 0.76 } : { x: 0, y: h * 0.04, w, h: h * 0.76 };
+        subject = drawFocused(g, src, R, z);
         g.restore();
       } else if (tech === 'cutout') {
-        const r = TD.system.rng(D.seed + k * 31);
-        const cx = w * (0.42 + r() * 0.16), cy = h * (0.38 + r() * 0.08);
-        const R = w * (0.42 - 0.12 * D.air);
-        const pop = 1 - 0.18 * Math.exp(-sp * M.beatsPerShot * 3);
-        const pts = Array.from({ length: 11 }, (_, i) => {
-          const a = i / 11 * Math.PI * 2, rad = R * (1 + (r() - 0.5) * 0.32 + 0.03 * Math.sin(t * 2 + i)) * pop;
-          return [cx + Math.cos(a) * rad, cy + Math.sin(a) * rad * 1.15];
-        });
-        g.save(); g.translate(10, 14); smoothBlob(g, pts); g.fillStyle = 'rgba(0,0,0,0.16)'; g.fill(); g.restore();
-        g.save(); smoothBlob(g, pts); g.clip();
-        const src = L.photo, rr = coverRect(src.width, src.height, w, h, 1 + M.zoom * sp);
-        g.drawImage(src, rr.x + (cx - w / 2) * 0.3, rr.y, rr.w, rr.h);
+        // The whole photo on a hand-cut paper card (Matisse cut his shapes with
+        // scissors). The card takes the photo's own shape, so nothing is cropped
+        // unless the photo is taller than the space; the paper shapes stay around it.
+        const r = TD.system.rng(D.seed + k * 31), src = L.photo, ar = src.width / src.height;
+        const innerW = CARD.w - 2 * CARD.inset, innerH = clamp(innerW / ar, innerW * 0.6, CARD.h - 2 * CARD.inset);
+        const cw = CARD.w, ch = innerH + 2 * CARD.inset, cx = CARD.x + cw / 2, cy = CARD.y + CARD.h / 2;
+        const pop = 1 - 0.05 * Math.exp(-sp * M.beatsPerShot * 3), tilt = (r() - 0.5) * 0.035;
+        const pts = [];
+        const side = (x0, y0, x1, y1) => { for (let i = 0; i < 6; i++) { const u = i / 6; pts.push([x0 + (x1 - x0) * u + (r() - 0.5) * 5, y0 + (y1 - y0) * u + (r() - 0.5) * 5]); } };
+        const c = 14 + r() * 10; // snipped corners
+        side(c, 0, cw - c, 0); side(cw, c, cw, ch - c); side(cw - c, ch, c, ch); side(0, ch - c, 0, c);
+        const cut = () => { g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath(); };
+        g.save();
+        g.translate(cx, cy); g.rotate(tilt); g.scale(pop, pop); g.translate(-cw / 2, -ch / 2);
+        g.save(); g.translate(10, 14); cut(); g.fillStyle = 'rgba(0,0,0,0.16)'; g.fill(); g.restore();
+        cut(); g.fillStyle = 'rgb(250,246,238)'; g.fill();
+        drawFocused(g, src, { x: CARD.inset, y: CARD.inset, w: innerW, h: innerH }, 1 + M.zoom * 0.5 * sp);
         g.restore();
+        subject = { x0: CARD.x, x1: CARD.x + cw, y0: cy - ch / 2, y1: cy + ch / 2 };
       } else {
-        const src = L.photo, ar = clamp((img.naturalWidth || 4) / (img.naturalHeight || 5), 0.6, 1.5);
+        const src = L.photo, ar = clamp(src.width / src.height, 0.6, 1.5);
         const pw = w * clamp(1 - D.air, 0.32, 0.7), ph = Math.min(pw / ar, h * 0.58);
         const left = k % 2 === 0;
         const x = (left ? w * 0.1 : w * 0.9 - pw) + 10 * Math.sin(t / 9), y = h * 0.14 + 6 * Math.sin(t / 11);
-        g.save(); g.beginPath(); g.rect(x, y, pw, ph); g.clip();
-        const rr = coverRect(src.width, src.height, pw, ph, 1 + M.zoom * 0.5 * sp);
-        g.drawImage(src, x + rr.x, y + rr.y, rr.w, rr.h);
-        g.restore();
+        drawFocused(g, src, { x, y, w: pw, h: ph }, 1 + M.zoom * 0.5 * sp);
       }
       g.restore();
     }
@@ -329,7 +377,11 @@
         shapes.forEach((s, i) => {
           const pulse = 1 + M.pulse * 2.2 * Math.exp(-((((t - beatOff()) / M.beat + s.off) % 1 + 1) % 1) * 5);
           g.save(); g.translate(s.x, s.y); g.rotate(s.rot + t * s.spin * D.mood.energy); g.scale(pulse, pulse);
-          g.fillStyle = rgba(s.col, 0.92); g.strokeStyle = rgba(s.col, 0.95);
+          // A filled shape over the photo's subject (faces, people) turns see-through.
+          const rad = s.s * 0.6 * pulse;
+          const over = subject && s.type !== 'line' && s.type !== 'ring' && s.x + rad > subject.x0 && s.x - rad < subject.x1 && s.y + rad > subject.y0 && s.y - rad < subject.y1;
+          const op = over ? 0.22 : 0.92;
+          g.fillStyle = rgba(s.col, op); g.strokeStyle = rgba(s.col, over ? 0.5 : 0.95);
           if (s.type === 'circle') { g.beginPath(); g.arc(0, 0, s.s * 0.5, 0, Math.PI * 2); g.fill(); }
           else if (s.type === 'ring') { g.lineWidth = 6 + s.s * 0.05; g.beginPath(); g.arc(0, 0, s.s * 0.55, 0, Math.PI * 2); g.stroke(); }
           else if (s.type === 'line') { g.lineWidth = 4 + s.s * 0.04; const l = s.len * ease(sp * 2.5 + i * 0.05); g.beginPath(); g.moveTo(-l / 2, 0); g.lineTo(l / 2, 0); g.stroke(); }
@@ -563,5 +615,5 @@
     };
   }
 
-  TD.render = { createPlayer, fontsReady, WIN, W, H };
+  TD.render = { createPlayer, fontsReady, placeIn, WIN, W, H };
 })(globalThis.TD = globalThis.TD || {});

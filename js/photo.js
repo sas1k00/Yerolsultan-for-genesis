@@ -109,5 +109,96 @@
     return res;
   }
 
-  TD.photo = { analyzePhotos, photoStats, palette, samplePixels };
+  // ------------------------------------------------------ what matters ---
+  /* Where the important part of a photo is, so no technique crops it away.
+   * Each pixel gets a weight: skin tones (people, faces) count most, then
+   * detail (edges) and colours that stand out from the photo's average, with a
+   * gentle pull to the centre. The "subject" box holds most of that weight:
+   * 90 % when there are people (nobody gets cut off), 80 % otherwise (a plain
+   * landscape may still be cropped a little to fill the page).
+   * Pure: works on RGBA pixel data, runs in Node for tests. */
+  function focusFromPixels(data, w, h) {
+    const lumA = new Float32Array(w * h);
+    let mr = 0, mg = 0, mb = 0;
+    for (let i = 0, p = 0; p < w * h; i += 4, p++) {
+      lumA[p] = (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
+      mr += data[i]; mg += data[i + 1]; mb += data[i + 2];
+    }
+    mr /= w * h; mg /= w * h; mb /= w * h;
+    const wt = new Float32Array(w * h), skinMask = new Uint8Array(w * h);
+    let skinN = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const p = y * w + x, i = p * 4, r = data[i], g = data[i + 1], b = data[i + 2];
+      const L = (xx, yy) => lumA[clamp(yy, 0, h - 1) * w + clamp(xx, 0, w - 1)];
+      const edge = Math.min(1, (Math.abs(L(x + 1, y) - L(x - 1, y)) + Math.abs(L(x, y + 1) - L(x, y - 1))) * 2.5);
+      const stand = Math.min(1, Math.hypot(r - mr, g - mg, b - mb) / 160);
+      // Skin in YCbCr: a classic, lighting-tolerant range.
+      const Y = 0.299 * r + 0.587 * g + 0.114 * b, cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b, cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+      const skin = Y > 50 && cb >= 77 && cb <= 127 && cr >= 137 && cr <= 173 ? 1 : 0;
+      skinN += skin; skinMask[p] = skin;
+      const dx = (x + 0.5) / w - 0.5, dy = (y + 0.5) / h - 0.5;
+      const centre = 0.65 + 0.35 * Math.exp(-(dx * dx + dy * dy) / (2 * 0.3 * 0.3));
+      wt[p] = (0.45 * edge + 0.35 * stand + 1.2 * skin + 0.02) * centre;
+    }
+    // Skin-coloured areas, one by one. Sand or a beige wall is one large solid
+    // area across the photo; people are separate or uneven shapes (gaps between
+    // bodies, heads narrower than shoulders). Large solid areas are not people.
+    const sx = [], sy = [], seen = new Uint8Array(w * h);
+    for (let p0 = 0; p0 < w * h; p0++) {
+      if (!skinMask[p0] || seen[p0]) continue;
+      const stack = [p0], pts = [];
+      seen[p0] = 1;
+      let bx0 = w, bx1 = 0, by0 = h, by1 = 0;
+      while (stack.length) {
+        const p = stack.pop(), x = p % w, y = (p - x) / w;
+        pts.push(p); bx0 = Math.min(bx0, x); bx1 = Math.max(bx1, x); by0 = Math.min(by0, y); by1 = Math.max(by1, y);
+        for (const q of [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, y > 0 ? p - w : -1, y < h - 1 ? p + w : -1]) {
+          if (q >= 0 && skinMask[q] && !seen[q]) { seen[q] = 1; stack.push(q); }
+        }
+      }
+      const bw = bx1 - bx0 + 1, bh = by1 - by0 + 1, fill = pts.length / (bw * bh);
+      const edge = bx0 === 0 || by0 === 0 || bx1 === w - 1 || by1 === h - 1;
+      // Sand, a wall, a table: solid, big, and wide or running into the photo's edge.
+      const surface = fill > 0.85 && pts.length > 0.02 * w * h && (bw > 0.5 * w || edge);
+      if (surface || pts.length < 2) { pts.forEach((p) => { wt[p] *= 0.25; }); continue; }
+      pts.forEach((p) => { const x = p % w; sx.push((x + 0.5) / w); sy.push(((p - x) / w + 0.5) / h); });
+    }
+    const people = sx.length / (w * h) > 0.004;
+    const skinAnywhere = skinN / (w * h) > 0.02;
+    const keep = people || skinAnywhere ? 0.9 : 0.8;
+    const colSum = new Float64Array(w), rowSum = new Float64Array(h);
+    let total = 0, cx = 0, cy = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const v = wt[y * w + x]; colSum[x] += v; rowSum[y] += v; total += v; cx += v * (x + 0.5); cy += v * (y + 0.5);
+    }
+    const span = (sums, n) => {
+      const lo = (1 - keep) / 2 * total, hi = (1 + keep) / 2 * total;
+      let acc = 0, a = 0, b = n;
+      for (let i = 0; i < n; i++) { acc += sums[i]; if (acc < lo) a = i + 1; if (acc <= hi) b = i + 1; }
+      return [a / n, Math.min(1, Math.max(b, a + 1) / n)];
+    };
+    let [x0, x1] = span(colSum, w), [y0, y1] = span(rowSum, h);
+    let fx = cx / total / w, fy = cy / total / h;
+    if (people) {
+      // The people define what must stay: where the skin is (faces, arms), a little
+      // wider, and further down for the bodies.
+      const q = (arr, t) => { const a = arr.slice().sort((m, n) => m - n); return a[Math.min(a.length - 1, Math.floor(t * a.length))]; };
+      const ax0 = q(sx, 0.01), ax1 = q(sx, 0.99), ay0 = q(sy, 0.01), ay1 = q(sy, 0.99);
+      x0 = clamp(ax0 - 0.06, 0, 1); x1 = clamp(ax1 + 0.06, 0, 1);
+      y0 = clamp(ay0 - 0.08, 0, 1); y1 = clamp(ay1 + 0.6 * (ay1 - ay0) + 0.15, 0, 1);
+      fx = (x0 + x1) / 2; fy = (y0 + y1) / 2;
+    }
+    // No clear subject (an even landscape): the page may crop it to fill. Never
+    // when there is skin colour in the photo: unsure is safer zoomed out than cut.
+    const diffuse = !people && !skinAnywhere && (x1 - x0) * (y1 - y0) > 0.55;
+    return { x0: +x0.toFixed(3), x1: +x1.toFixed(3), y0: +y0.toFixed(3), y1: +y1.toFixed(3),
+      cx: +fx.toFixed(3), cy: +fy.toFixed(3), people, diffuse };
+  }
+  /** The subject box of an image (browser). */
+  function focusOf(img) {
+    const s = samplePixels(img, 64);
+    return focusFromPixels(s.data, s.w, s.h);
+  }
+
+  TD.photo = { analyzePhotos, photoStats, palette, samplePixels, focusFromPixels, focusOf };
 })(globalThis.TD = globalThis.TD || {});
