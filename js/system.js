@@ -177,7 +177,8 @@
     const strength = Math.min(1, W[ranked[1]] / W[technique]);
     const secondary = strength >= SECOND_MIN ? ranked[1] : null;
     // The stronger the second feeling, the more often its shots appear.
-    const every = !secondary ? 0 : strength >= 0.75 ? 3 : strength >= 0.55 ? 4 : 5;
+    // With a single photo there are no shot changes, so no interludes either.
+    const every = !secondary || (p.count || 0) <= 1 ? 0 : strength >= 0.75 ? 3 : strength >= 0.55 ? 4 : 5;
     const blendFrom = !secondary ? null : candidate && (secondary === candidate || technique === candidate) ? mixFrom : 'border';
 
     const T = TECHNIQUES[technique];
@@ -203,7 +204,9 @@
       rule: secondary
         ? `Главный приём по общему настроению — «${T.name}»; второе — «${TECHNIQUES[secondary].name}», сила ${pct(strength)}`
         : ORDER.slice().sort((x, y) => soft[y] - soft[x]).slice(0, 3).map((k) => `${TECHNIQUES[k].name} ${share(k)}`).join(', '),
-      result: secondary
+      result: secondary && !every
+        ? `одно фото, поэтому без смены кадров: второе чувство («${TECHNIQUES[secondary].name}») остаётся в цвете и паузах голоса`
+        : secondary
         ? `каждая ${every}-я смена кадра повторяет предыдущее фото в приёме «${TECHNIQUES[secondary].name}» (${TECHNIQUES[secondary].ref}), тот же момент другим чувством: ${TECHNIQUES[secondary].interlude}`
         : 'день далеко от границ: один чистый приём',
     });
@@ -258,7 +261,8 @@
     const bpm = m.bpm || 96;
     const beat = 60 / bpm;
     let beatsPerShot = { brush: 8, ma: 8, cutout: 4, geometry: 2 }[technique];
-    while (beatsPerShot * beat < 1.4) beatsPerShot *= 2;
+    // At least 3 s per photo, so a photo can be seen; still a whole number of beats.
+    while (beatsPerShot * beat < 3) beatsPerShot *= 2;
     while (beatsPerShot * beat > 7.5 && beatsPerShot > 2) beatsPerShot /= 2;
     const shotDur = beatsPerShot * beat;
     const fade = FADE[technique] * shotDur;

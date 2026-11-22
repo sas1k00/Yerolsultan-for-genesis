@@ -477,11 +477,19 @@
       const ty = D.typo, w = WIN.w, h = WIN.h;
       const capStart = Math.min(M.shotDur * 0.5, 2.2);
       g.save();
-      g.font = `${ty.italic ? 'italic ' : ''}${ty.weight} ${ty.size}px "${ty.font}"`;
+      // The whole caption fits: the font shrinks (down to 60 %) before anything is cut.
       const str = ty.upper ? text.toUpperCase() : text;
-      const maxW = D.technique === 'ma' ? w * 0.8 : w * 0.78;
-      const lines = wrap(g, str, maxW).slice(0, D.technique === 'ma' ? 3 : 4);
-      const lh = ty.size * (D.technique === 'brush' ? 1.0 : 1.18);
+      const maxW = D.technique === 'ma' ? w * 0.8 : w * 0.78, maxLines = D.technique === 'ma' ? 4 : 5;
+      let size = ty.size, lines;
+      const fontAt = (px) => `${ty.italic ? 'italic ' : ''}${ty.weight} ${px}px "${ty.font}"`;
+      for (;;) {
+        g.font = fontAt(size);
+        lines = wrap(g, str, maxW);
+        if (lines.length <= maxLines || size <= ty.size * 0.6) break;
+        size -= 2;
+      }
+      if (lines.length > maxLines) { lines = lines.slice(0, maxLines); lines[maxLines - 1] = lines[maxLines - 1].replace(/[\s,.;:—-]*\S*$/, '') + '…'; }
+      const lh = size * (D.technique === 'brush' ? 1.0 : 1.18);
       const tt = final ? 1e9 : t - capStart;
       if (tt < 0) { g.restore(); return; }
       if (D.technique === 'brush') {
@@ -506,7 +514,7 @@
           if (tt < i * M.beat) return;
           const lw = g.measureText(l).width;
           g.fillStyle = rgba([12, 12, 16], 0.95); g.fillRect(40, y0 + i * (lh + 6), lw + 36, lh);
-          g.fillStyle = rgba([240, 234, 220], 1); g.fillText(l, 58, y0 + i * (lh + 6) + ty.size * 0.98);
+          g.fillStyle = rgba([240, 234, 220], 1); g.fillText(l, 58, y0 + i * (lh + 6) + size * 0.98);
         });
       } else if (D.technique === 'cutout') {
         const bw = Math.max(...lines.map((l) => g.measureText(l).width)) + 60, bh = lines.length * lh + 44;
@@ -523,19 +531,19 @@
             const ww = g.measureText(word).width;
             if (k > 0) {
               g.save(); g.translate(xx + ww / 2, 22 + i * lh + lh * 0.55); g.scale(s, s);
-              g.fillStyle = rgba(P.ink, 1); g.textAlign = 'center'; g.fillText(word, 0, ty.size * 0.35); g.restore();
+              g.fillStyle = rgba(P.ink, 1); g.textAlign = 'center'; g.fillText(word, 0, size * 0.35); g.restore();
             }
             xx += g.measureText(word + ' ').width;
           });
         });
       } else {
-        const y0 = h * 0.78 + 70;
+        const y0 = Math.min(h * 0.78 + 70, h - 40 - (lines.length - 1) * lh);
         // Ma's caption has no plate of its own; on a busy interlude shot it gets
         // a soft paper backing so it stays readable.
         if (tech !== 'ma' && tech !== 'geometry') {
           const bw = Math.max(...lines.map((l) => g.measureText(l).width)) + 48;
           g.fillStyle = rgba(P.paper, 0.82 * clamp(tt / (M.beat * 3), 0, 1));
-          g.fillRect(w * 0.08 - 24, y0 - ty.size - 8, bw, lines.length * lh + 30);
+          g.fillRect(w * 0.08 - 24, y0 - size - 8, bw, lines.length * lh + 30);
         }
         lines.forEach((l, i) => {
           const a = clamp((tt - i * M.beat * 4) / (M.beat * 3), 0, 1);
@@ -554,7 +562,10 @@
       ctx.translate(WIN.x, WIN.y);
       ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
       ctx.fillStyle = rgba(P.windowBg, 1); ctx.fillRect(0, 0, w, h);
-      const shot = Math.floor(t / M.shotDur), within = t - shot * M.shotDur, sp = within / M.shotDur;
+      // One photo: one long shot with a slow zoom over the whole moment, no "changes" to itself.
+      const single = images.length <= 1, loopLen = st.duration || M.shotDur * 6;
+      const shot = single ? 0 : Math.floor(t / M.shotDur);
+      const within = single ? t % loopLen : t - shot * M.shotDur, sp = single ? within / loopLen : within / M.shotDur;
       // Each shot comes in with its own technique's transition.
       const cur = slot(shot).tech, prev = shot > 0 ? slot(shot - 1).tech : cur, fadeIn = fadeOf(cur);
       if (fadeIn > 0 && shot > 0 && within < fadeIn) {

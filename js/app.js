@@ -393,6 +393,9 @@
           <div class="feel-row"><button class="tap" data-k="moodHint" data-v="major" aria-pressed="false">Светлая</button><button class="tap" data-k="moodHint" data-v="minor" aria-pressed="false">Грустная</button></div>
           <p style="margin:12px 0 0"><button class="btn btn-ink" id="rebuild" disabled>Пересобрать день</button></p></div>` : ''}
         <div class="box"><h2>Запись</h2><p class="entry">${esc(day.rawText)}</p></div>
+        <div class="box caption-box"><h2>Подпись на странице</h2><p class="entry" id="cap-text">${esc(day.caption || '')}</p>
+          <textarea id="cap-edit" rows="3" hidden aria-label="Подпись на странице дня">${esc(day.caption || '')}</textarea>
+          <p style="margin:10px 0 0"><button class="btn btn-ghost" id="cap-btn">Изменить подпись</button></p></div>
         <div class="box"><h2>Почему день выглядит так</h2><ul class="why">${D.why.map((w) => `<li><span class="g">${esc(w.group)}</span>
           <span><b>${esc(w.input)}</b> → ${esc(w.rule)}<br><span class="r">${esc(w.result)}</span></span></li>`).join('')}</ul></div>
         <div class="box"><h2>Что система увидела</h2><div class="facts">${chips.map((c) => `<span>${esc(c)}</span>`).join('')}</div>
@@ -520,6 +523,19 @@
       duck(1); delete b.dataset.on; b.textContent = 'Озвучить запись';
     };
     $('#zip').onclick = async () => { const z = await TD.store.folderZip(day); download(z.blob, z.name); };
+    // The caption is the person's call: edit it, and the page and its cover change at once.
+    $('#cap-btn').onclick = async (e) => {
+      const ta = $('#cap-edit'), p = $('#cap-text'), b = e.currentTarget;
+      if (ta.hidden) { ta.hidden = false; p.hidden = true; b.textContent = 'Сохранить подпись'; ta.focus(); return; }
+      const v = ta.value.replace(/\s+/g, ' ').trim();
+      if (!v) return toast('Подпись не может быть пустой');
+      day.caption = v; p.textContent = v;
+      if (!playing) player.draw(Math.min(D.motion.shotDur * 0.7, 3), { final: true });
+      day.cover = player.cover(); // the archive and the feed show the new caption too (playback carries on)
+      await TD.store.put(day);
+      ta.hidden = true; p.hidden = false; b.textContent = 'Изменить подпись';
+      toast('Подпись сохранена');
+    };
     // Two taps on the day page: rebuild the day with the listener's answers.
     if ($('#day-feel')) {
       const picked = {};

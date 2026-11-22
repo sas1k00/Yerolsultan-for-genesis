@@ -147,10 +147,25 @@ test('a bad morning that ends well reads as a good day (the end weighs more)', (
   eq(t.arc.kind, 'rise'); ok(t.valence > 0, 'valence ' + t.valence);
 });
 test('after a turn, the day is remembered as its ending: «Вечер на крыше с Аружан»', () => eq(title(turnDay, '2026-10-01'), 'Вечер на крыше с Аружан'));
-test('the caption is the turning point, not the bad start', () => ok(TD.analyzeText(turnDay).caption.startsWith('Но вечером'), TD.analyzeText(turnDay).caption));
+test('a short entry (2–3 sentences) is the caption as a whole: nothing the person wrote is dropped', () => {
+  eq(TD.analyzeText(turnDay).caption, turnDay);
+  const testers = 'Сегодня я с 8 утра до 2х часов дня смотрел 2ой день Brawl Stars world finals 2026. А потом занимался подачей в Гонконг';
+  eq(TD.analyzeText(testers).caption, testers);
+});
+test('a long entry: the two most vivid sentences, in the order written (the turning point among them)', () => {
+  const long = 'Утром всё было серо и тревожно. Проспала, опоздала на пары, преподаватель ругался. Потом весь день сидела в библиотеке над курсовой. '
+    + 'Но вечером мы с Аружан пили кофе на крыше и смеялись до слёз. Домой пришла поздно, уставшая, но счастливая.';
+  const c = TD.analyzeText(long).caption;
+  ok(c.includes('Но вечером мы с Аружан'), c);
+  ok(c.split(/(?<=[.!?…])\s+/).length <= 2, 'two sentences at most: ' + c);
+  ok(c.length <= 171, 'not too long');
+});
 test('intensifiers are not feelings: «ужасно красиво» is positive', () => ok(TD.analyzeText('Было ужасно красиво.').valence > 0.2));
-test('a first time becomes the caption', () =>
-  eq(TD.analyzeText('Ездили с семьёй на Чарын. Каньон огромный, красные скалы, жара. Впервые ночевали в палатке.').caption, 'Впервые ночевали в палатке.'));
+test('in a long entry, a first time is kept in the caption', () => {
+  const long = 'Ездили с семьёй на Чарын. Дорога была длинная, в машине было душно и все устали. Каньон огромный, красные скалы, жара. '
+    + 'У реки ели арбуз и долго молчали. Впервые ночевали в палатке под звёздами.';
+  ok(TD.analyzeText(long).caption.includes('Впервые ночевали в палатке'), TD.analyzeText(long).caption);
+});
 test('peak and arc are explained on the page', () => {
   const ph = { count: 1, brightness: 0.5, contrast: 0.2, saturation: 0.3, warmth: 0, valence: 0, energy: 0.4, palette: [{ rgb: [180, 150, 120], share: 1 }] };
   const d = TD.system.design({ text: TD.analyzeText(turnDay, '2026-10-01'), photos: ph, music: TD.music.combineMusic(null, { genre: 'indie' }), date: '2026-10-01', id: 'p', rawText: turnDay });
@@ -386,6 +401,18 @@ console.log('Photos: nothing important is cropped');
   test('a plain landscape fills the window', () => ok(TD.render.placeIn(1600, 1200, 960, 1290, fLand).covers));
   test('the slow zoom never pushes the subject out', () => ok(inside(TD.render.placeIn(1600, 1200, 960, 1290, fOne, 1.1), fOne, 960, 1290)));
 }
+
+test('at least 3 s per photo, still a whole number of beats', () => {
+  [dSlow, dFast].forEach((d) => ok(d.motion.shotDur >= 3 - 1e-9, 'shot ' + d.motion.shotDur));
+  const fast = TD.system.design({ text, photos: photo, music: TD.music.combineMusic(null, { genre: 'electronic', tapBpm: 140, moodHint: 'minor' }), date: '2026-05-10', id: 'f', rawText: 'a' });
+  ok(fast.motion.shotDur >= 3, 'a 140 BPM day: ' + fast.motion.shotDur.toFixed(2) + ' s');
+});
+test('one photo: no shot changes, so no interludes, and the page says why', () => {
+  const t1 = TD.analyzeText('Провожали Дану в Сеул. Танцевали, смеялись до слёз, было весело. А потом обнимались у такси, и стало очень грустно.');
+  const d = TD.system.design({ text: t1, photos: { ...photo, count: 1 }, music: fastMajor, date: '2026-06-01', id: 'one', rawText: 'x' });
+  eq(d.blend.every, 0);
+  ok(d.why.some((w) => /одно фото/.test(w.result)), 'explained');
+});
 
 console.log('Song from a link: title, artist, year, genre');
 {

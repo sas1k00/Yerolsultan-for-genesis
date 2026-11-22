@@ -281,8 +281,11 @@
     res.travel = trip || (destination && transport) ? { trip, destination, transport } : null;
     res.company = res.people.length > 0 || tokens.includes('мы') || tokens.includes('вместе') || tokens.includes('we');
 
-    // ---- caption: the most vivid sentence -----------------------------
-    let best = '', bestScore = -1;
+    // ---- caption: the person's own words -------------------------------
+    // A short entry (up to 3 sentences, ~150 characters) is the caption as a whole:
+    // dropping half of two sentences loses the day. A longer one gives its two most
+    // vivid sentences, kept in the order they were written.
+    const scored = [];
     sentences.forEach((s, idx) => {
       const tk = tokenize(s);
       let score = 0;
@@ -298,9 +301,14 @@
       if (res.firsts.includes(s)) score += 0.7; // a first time
       if (destination && tk.some((tok) => destination.m.some((x) => matches(tok, x)))) score += 0.4;
       score -= idx * 0.05;
-      if (score > bestScore) { bestScore = score; best = s; }
+      scored.push({ s, idx, score });
     });
-    res.caption = trimCaption(best || text);
+    const whole = text.replace(/\s+/g, ' ').trim();
+    if (whole.length <= 150 && sentences.length <= 3) res.caption = whole;
+    else {
+      const top = scored.slice().sort((a, b) => b.score - a.score).slice(0, 2).sort((a, b) => a.idx - b.idx);
+      res.caption = trimCaption(top.map((x) => x.s).join(' ') || whole, 170);
+    }
     return res;
   }
 
