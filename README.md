@@ -4,7 +4,7 @@
 
 Прототип для RecGenesis Hackathon, трек ArtTech, кейс «Make the Invisible Visible».
 
-![Лента из шести дней](docs/examples/lenta.jpg)
+![Лента из шести настоящих дней команды: Берлин, Рим, море, рафтинг, день рождения, Памуккале](docs/examples/lenta.jpg)
 
 ## Запуск
 
