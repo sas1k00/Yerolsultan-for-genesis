@@ -270,8 +270,16 @@
       if (!artist || !title || (f.year.dataset.user && f.genre.dataset.user)) return;
       const my = ++lookupSeq;
       let rel = null;
-      try { rel = await TD.songinfo.release(artist, title); } catch (e) { rel = null; }
-      if (my !== lookupSeq || !rel) return;
+      info.textContent = `Ищу год и жанр: ${artist} — ${title}…`;
+      let failed = false;
+      try { rel = await TD.songinfo.release(artist, title); } catch (e) { rel = null; failed = true; }
+      if (my !== lookupSeq) return;
+      if (!rel) {
+        // Not every song is on Apple Music (some live only on Spotify or YouTube): say so, don't stay silent.
+        info.textContent = failed ? 'Не получилось проверить год: нет связи. Год и жанр можно вписать сами — они не обязательны.'
+          : `«${title}» нет в каталоге Apple Music, поэтому год и жанр не нашлись. Впишите их сами или оставьте: они не обязательны.`;
+        return;
+      }
       fillField('year', rel.year);
       if (rel.genre && !f.genre.dataset.user) f.genre.value = rel.genre;
       info.textContent = `Нашлось: ${artist} — ${title}${rel.year ? ', ' + rel.year : ''}${rel.genre ? ', ' + TD.music.GENRES[rel.genre].label : ''}. Можно поправить.`;
