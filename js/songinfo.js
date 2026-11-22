@@ -3,7 +3,7 @@
  *   1) Title (and artist where the service gives it): the services' public
  *      oEmbed endpoints. YouTube titles are usually "Artist - Title"; its
  *      "author" is the uploading channel, not the artist. Spotify gives the
- *      title only. SoundCloud gives "Title by Artist". Apple Music links are
+ *      title only, so the person types the artist and the year follows. SoundCloud gives "Title by Artist". Apple Music links are
  *      looked up by track id.
  *   2) Year and genre: Apple's public iTunes Search. Among releases by the same
  *      artist with the same title, the earliest year is the original (a 2014
@@ -68,22 +68,28 @@
   const norm = (s) => cleanTitle(s).toLowerCase().replace(/ё/g, 'е').replace(/\s*[-–—]\s*(remaster|live|version|mono|stereo).*$/i, '')
     .replace(/[^a-zа-яәғқңөұүһі0-9]+/gi, ' ').trim();
 
+  // Cyrillic (Russian and Kazakh) → Latin, the way artists write their names on Apple Music:
+  // «Молданазар» → «moldanazar», «Қайрат Нұртас» → «kairat nurtas».
+  const LAT = { а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'i',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'ts',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya',
+    ә:'a',ғ:'g',қ:'k',ң:'n',ө:'o',ұ:'u',ү:'u',һ:'h',і:'i' };
+  const translit = (s) => String(s || '').toLowerCase().replace(/[а-яёәғқңөұүһі]/g, (c) => LAT[c] ?? c);
+  const hasCyr = (s) => /[а-яёәғқңөұүһі]/i.test(s || '');
+
   /** From iTunes results: the original year and the usual genre of this song by this artist. */
   function pickRelease(results, artist, title) {
     const rs = (results || []).filter((r) => r && r.trackName && r.artistName && r.releaseDate);
     if (!rs.length) return null;
     const a0 = artist ? norm(artist) : null, t0 = title ? norm(title) : null;
     const sameTitle = (r) => !t0 || norm(r.trackName).startsWith(t0) || t0.startsWith(norm(r.trackName));
-    const sameArtist = (r) => !a0 || norm(r.artistName).includes(a0) || a0.includes(norm(r.artistName));
-    let pool = a0 ? rs.filter((r) => sameTitle(r) && sameArtist(r)) : [];
-    if (!a0) {
-      // Title only (Spotify): the artist with the most releases of this title is the song people
-      // mean (the hit has remasters and deluxe editions; other songs of the same name have one).
-      const count = {};
-      rs.filter(sameTitle).forEach((r) => { const k = norm(r.artistName); count[k] = (count[k] || 0) + 1; });
-      const top = Object.keys(count).sort((x, y) => count[y] - count[x])[0];
-      pool = top ? rs.filter((r) => norm(r.artistName) === top && sameTitle(r)) : [];
-    }
+    const sameArtist = (r) => {
+      if (!a0) return true;
+      const b = norm(r.artistName), al = translit(a0), bl = translit(b);
+      return b.includes(a0) || a0.includes(b) || bl.includes(al) || al.includes(bl);
+    };
+    // Without an artist there is no honest answer: «Mahabbatym» alone matches ten singers, and the one
+    // with the most releases (Say Mo) is not the one people mean (Moldanazar). So ask, don't guess.
+    if (!a0) return null;
+    const pool = rs.filter((r) => sameTitle(r) && sameArtist(r));
     if (!pool.length) return null;
     const year = Math.min(...pool.map((r) => parseInt(r.releaseDate, 10)).filter((y) => y > 1800));
     const votes = {};
@@ -137,7 +143,11 @@
     if (!title) return null;
     const term = [artist, title].filter(Boolean).join(' ');
     const d = await getJSON(`https://itunes.apple.com/search?term=${enc(term)}&entity=song&limit=25`);
-    return pickRelease(d.results, artist, title);
+    const r = pickRelease(d.results, artist, title);
+    if (r || !hasCyr(term)) return r;
+    // «Молданазар Mahabbatym» finds nothing: Apple Music spells him «Moldanazar». Try it in Latin.
+    const d2 = await getJSON(`https://itunes.apple.com/search?term=${enc(translit(term))}&entity=song&limit=25`);
+    return pickRelease(d2.results, artist, title);
   }
 
   /** Everything at once; each step is optional, nothing throws. */
@@ -149,7 +159,7 @@
     let rel = null;
     try { rel = await release(base.artist, base.title); } catch (e) { rel = null; }
     return {
-      title: base.title, artist: base.artist || (rel && rel.artist) || null, artistGuessed: !base.artist && !!(rel && rel.artist),
+      title: base.title, artist: base.artist || null,
       year: rel ? rel.year : null, genre: rel ? rel.genre : null, genreName: rel ? rel.genreName : null, from: base.from || 'имени файла',
     };
   }
@@ -173,5 +183,5 @@
     }));
   }
 
-  TD.songinfo = { lookup, searchYouTube, decodeEntities, fromLink, release, cleanTitle, splitArtistTitle, splitBy, fromFileName, pickRelease, genreKey };
+  TD.songinfo = { lookup, searchYouTube, decodeEntities, fromLink, release, cleanTitle, splitArtistTitle, splitBy, fromFileName, pickRelease, genreKey, translit };
 })(globalThis.TD = globalThis.TD || {});

@@ -281,6 +281,8 @@ test('YouTube start time is read from the link (?t=95, t=1m5s) and from «1:12»
   eq(TD.music.parseLink('https://www.youtube.com/watch?v=abc&t=1m5s').start, 65);
   eq(TD.music.parseLink('https://www.youtube.com/watch?v=abc').youtube, 'abc');
   eq(TD.music.parseTime('1:12'), 72); eq(TD.music.parseTime('nonsense'), null);
+  eq(TD.music.parseTime('1.12'), 72, 'phone keypad: dot'); eq(TD.music.parseTime('1,12'), 72, 'comma'); eq(TD.music.parseTime('1 12'), 72, 'space');
+  eq(TD.music.parseTime('2.5'), 125); eq(TD.music.parseTime('1.75'), null, 'not seconds');
 });
 
 console.log('Visual system');
@@ -439,10 +441,14 @@ console.log('Song from a link: title, artist, year, genre');
       rel('Frank Sinatra', 'The Way You Look Tonight', 1964, 'Jazz'), rel('Frank Sinatra', 'The Way You Look Tonight', 1964, 'Jazz')], 'Frank Sinatra', 'The Way You Look Tonight');
     eq(r.year, 1964); eq(r.genre, 'jazz');
   });
-  test('title only (Spotify): the artist with the most releases of that title, not an older song of the same name', () => {
-    const r = SI.pickRelease([rel('Isaac Hayes', 'Never Gonna Give You Up', 1971, 'R&B/Soul'), rel('Rick Astley', 'Never Gonna Give You Up', 1987, 'Pop'),
-      rel('Rick Astley', 'Never Gonna Give You Up (2022 Remaster)', 1987, 'Pop'), rel('Rick Astley', 'Never Gonna Give You Up (Cake Mix)', 1987, 'Pop')], null, 'Never Gonna Give You Up');
-    eq(r.artist, 'Rick Astley'); eq(r.year, 1987);
+  test('title only (Spotify): no artist is guessed — «Mahabbatym» has ten singers, the right one is not the most released', () => {
+    const rs = [rel('Moldanazar', 'Mahabbatym', 2018, 'Pop'), rel('Say Mo', 'Mahabbatym', 2022, 'R&B/Soul'),
+      rel('Say Mo', 'Mahabbatym (Amisko Remix)', 2023, 'Pop'), rel('akimmmich', 'Mahabbatym', 2024, 'Hip-Hop/Rap')];
+    eq(SI.pickRelease(rs, null, 'Mahabbatym'), null, 'title alone: ask the person');
+    const r = SI.pickRelease(rs, 'Moldanazar', 'Mahabbatym');
+    eq(r.artist, 'Moldanazar'); eq(r.year, 2018); eq(r.genre, 'pop');
+    eq(SI.pickRelease(rs, 'Молданазар', 'Mahabbatym').artist, 'Moldanazar', 'typed in Cyrillic');
+    eq(SI.translit('Қайрат Нұртас'), 'kairat nurtas');
   });
   test('YouTube search titles: HTML entities decoded («Rock &amp; Roll», «Don&#39;t»)', () => {
     eq(SI.decodeEntities('Rock &amp; Roll — Don&#39;t &quot;Stop&quot;'), 'Rock & Roll — Don\'t "Stop"');

@@ -81,7 +81,7 @@
           <button type="button" class="btn btn-ink" data-a="mark">● Это мой момент</button>
         </div>
         <div class="pk-row pk-end">
-          <label class="lbl-sm">или время <input class="pk-input" size="5" inputmode="numeric" aria-label="Начало момента, мм:сс"></label>
+          <label class="lbl-sm">или время <input class="pk-input" size="5" inputmode="text" autocomplete="off" aria-label="Начало момента, мм:сс"></label>
           <span class="pk-grow"></span>
           <button type="button" class="btn btn-ghost" data-a="cancel">Отмена</button>
           <button type="button" class="btn btn-ink" data-a="done">Готово</button>

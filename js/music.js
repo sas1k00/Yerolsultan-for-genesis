@@ -363,12 +363,13 @@
     };
   }
 
-  /** "1:12", "72", "1m12s", "?t=72" → seconds (or null). */
+  /** "1:12", "1.12", "1,12", "1 12", "72", "1m12s", "?t=72" → seconds (or null). A phone keypad
+   *  often has no ":", so a dot, comma or space between minutes and seconds works too. */
   function parseTime(v) {
     if (v == null || v === '') return null;
     const str = String(v).trim();
     let mm;
-    if ((mm = str.match(/^(\d+):(\d{1,2})$/))) return +mm[1] * 60 + +mm[2];
+    if ((mm = str.match(/^(\d+)\s*[:.,\s]\s*(\d{1,2})$/)) && +mm[2] < 60) return +mm[1] * 60 + +mm[2];
     if ((mm = str.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/)) && (mm[1] || mm[2] || mm[3])) return (+mm[1] || 0) * 3600 + (+mm[2] || 0) * 60 + (+mm[3] || 0);
     return null;
   }

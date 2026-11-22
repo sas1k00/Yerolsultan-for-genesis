@@ -259,10 +259,23 @@
         fillField('title', r.title); fillField('artist', r.artist); fillField('year', r.year);
         if (r.genre && !f.genre.dataset.user) f.genre.value = r.genre;
         info.textContent = `Нашлось (${r.from}): ${[r.artist, r.title].filter(Boolean).join(' — ')}${r.year ? ', ' + r.year : ''}`
-          + `${r.genre ? ', ' + TD.music.GENRES[r.genre].label : ''}.${r.artistGuessed ? ' Исполнителя угадали по названию — проверьте.' : ''} Можно поправить.`;
+          + `${r.genre ? ', ' + TD.music.GENRES[r.genre].label : ''}.`
+          + (r.artist || f.artist.value.trim() ? ' Можно поправить.' : ` ${r.from} не сообщает исполнителя: впишите его, и год с жанром найдутся.`);
       }, 350);
     };
     f.link.addEventListener('input', autofill); f.audio.addEventListener('change', autofill);
+    // The artist typed by hand (Spotify gives only the title): now the year and genre can be found.
+    f.artist.addEventListener('change', async () => {
+      const artist = f.artist.value.trim(), title = f.title.value.trim();
+      if (!artist || !title || (f.year.dataset.user && f.genre.dataset.user)) return;
+      const my = ++lookupSeq;
+      let rel = null;
+      try { rel = await TD.songinfo.release(artist, title); } catch (e) { rel = null; }
+      if (my !== lookupSeq || !rel) return;
+      fillField('year', rel.year);
+      if (rel.genre && !f.genre.dataset.user) f.genre.value = rel.genre;
+      info.textContent = `Нашлось: ${artist} — ${title}${rel.year ? ', ' + rel.year : ''}${rel.genre ? ', ' + TD.music.GENRES[rel.genre].label : ''}. Можно поправить.`;
+    });
     // "Найти на YouTube": from the typed title and artist. With a key (js/config.js) the
     // matches appear right here; without one, YouTube's own search opens in a new tab.
     const ytBtn = $('#yt-find'), ytRes = $('#yt-results');
