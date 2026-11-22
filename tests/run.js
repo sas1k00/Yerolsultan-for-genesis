@@ -8,8 +8,13 @@ for (const f of ['lexicon', 'text', 'naming', 'photo', 'music', 'system', 'store
 }
 const TD = globalThis.TD;
 let pass = 0, fail = 0;
+const pending = [];
 function test(name, fn) {
-  try { fn(); pass++; console.log('  ok  ' + name); } catch (e) { fail++; console.log('  FAIL ' + name + '\n       ' + e.message); }
+  try {
+    const r = fn();
+    if (r && typeof r.then === 'function') { pending.push(r.then(() => { pass++; console.log('  ok  ' + name); }, (e) => { fail++; console.log('  FAIL ' + name + '\n       ' + e.message); })); return; }
+    pass++; console.log('  ok  ' + name);
+  } catch (e) { fail++; console.log('  FAIL ' + name + '\n       ' + e.message); }
 }
 function eq(a, b, msg) { if (a !== b) throw new Error(`${msg || ''} expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`); }
 function ok(c, msg) { if (!c) throw new Error(msg || 'assertion failed'); }
@@ -439,6 +444,20 @@ console.log('Song from a link: title, artist, year, genre');
       rel('Rick Astley', 'Never Gonna Give You Up (2022 Remaster)', 1987, 'Pop'), rel('Rick Astley', 'Never Gonna Give You Up (Cake Mix)', 1987, 'Pop')], null, 'Never Gonna Give You Up');
     eq(r.artist, 'Rick Astley'); eq(r.year, 1987);
   });
+  test('YouTube search titles: HTML entities decoded («Rock &amp; Roll», «Don&#39;t»)', () => {
+    eq(SI.decodeEntities('Rock &amp; Roll — Don&#39;t &quot;Stop&quot;'), 'Rock & Roll — Don\'t "Stop"');
+  });
+  test('YouTube search by name: results parsed; quota and key errors explained in Russian', async () => {
+    const real = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => ({ ok: true, json: async () => ({ items: [{ id: { videoId: 'abc' }, snippet: { title: 'Ricchi e Poveri - Sar&#39; perch&eacute; ti amo', channelTitle: 'Ricchi E Poveri - Topic', thumbnails: { default: { url: 'x.jpg' } } } }] }) });
+      const r = await SI.searchYouTube('ricchi e poveri', 'KEY');
+      eq(r[0].id, 'abc'); eq(r[0].channel, 'Ricchi E Poveri - Topic');
+      globalThis.fetch = async () => ({ ok: false, status: 403, json: async () => ({ error: { errors: [{ reason: 'quotaExceeded' }] } }) });
+      let msg = ''; try { await SI.searchYouTube('x', 'KEY'); } catch (e) { msg = e.message; }
+      eq(msg, 'на сегодня поиски YouTube закончились');
+    } finally { globalThis.fetch = real; }
+  });
   test('iTunes genres map onto the diary\'s genres', () => {
     eq(SI.genreKey('Vocal Jazz'), 'jazz'); eq(SI.genreKey('Hip-Hop/Rap'), 'hiphop'); eq(SI.genreKey('K-Pop'), 'kpop'); eq(SI.genreKey('Soundtrack'), 'soundtrack'); eq(SI.genreKey('Alternative'), 'rock');
   });
@@ -448,5 +467,7 @@ console.log('Storage helpers');
 test('zip CRC-32 of "123456789" is CBF43926', () => eq(TD.store.crc32(new TextEncoder().encode('123456789')).toString(16).toUpperCase(), 'CBF43926'));
 test('ASCII file name for downloads', () => eq(TD.store.translit('Ночь в офисе перед сдачей'), 'noch-v-ofise-pered-sdachey'));
 
-console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail ? 1 : 0);
+Promise.all(pending).then(() => {
+  console.log(`\n${pass} passed, ${fail} failed`);
+  process.exit(fail ? 1 : 0);
+});

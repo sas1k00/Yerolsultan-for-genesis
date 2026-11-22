@@ -263,6 +263,34 @@
       }, 350);
     };
     f.link.addEventListener('input', autofill); f.audio.addEventListener('change', autofill);
+    // "Найти на YouTube": from the typed title and artist. With a key (js/config.js) the
+    // matches appear right here; without one, YouTube's own search opens in a new tab.
+    const ytBtn = $('#yt-find'), ytRes = $('#yt-results');
+    const ytQuery = () => [f.artist.value.trim(), f.title.value.trim()].filter(Boolean).join(' ');
+    const updateYt = () => { ytBtn.disabled = !ytQuery(); };
+    f.artist.addEventListener('input', updateYt); f.title.addEventListener('input', updateYt); updateYt();
+    const openYouTubeSearch = (q, why) => {
+      window.open('https://www.youtube.com/results?search_query=' + encodeURIComponent(q), '_blank', 'noopener');
+      info.textContent = `${why ? why + '. ' : ''}Открыл поиск YouTube в новой вкладке: скопируйте ссылку на видео и вставьте её в поле «Ссылка».`;
+    };
+    ytBtn.onclick = async () => {
+      const q = ytQuery(), key = TD.config && TD.config.youtubeApiKey;
+      if (!q) return;
+      if (!key) return openYouTubeSearch(q);
+      ytRes.hidden = false; ytRes.innerHTML = '<p class="lbl-sm">Ищу на YouTube…</p>';
+      try {
+        const items = await TD.songinfo.searchYouTube(q, key);
+        if (!items.length) { ytRes.innerHTML = '<p class="lbl-sm">На YouTube ничего не нашлось: проверьте название.</p>'; return; }
+        ytRes.innerHTML = '<p class="lbl-sm">Выберите видео:</p>' + items.map((it, i) => `<button type="button" class="yt-item" data-i="${i}">
+          ${it.thumb ? `<img src="${esc(it.thumb)}" alt="" loading="lazy">` : '<i class="yt-noimg"></i>'}<span><b>${esc(it.title)}</b><small>${esc(it.channel)}</small></span></button>`).join('');
+        ytRes.querySelectorAll('.yt-item').forEach((b) => (b.onclick = () => {
+          const it = items[+b.dataset.i];
+          f.link.value = `https://www.youtube.com/watch?v=${it.id}`;
+          f.link.dispatchEvent(new Event('input', { bubbles: true })); // fills year and genre, enables "Выбрать на слух"
+          ytRes.hidden = true;
+        }));
+      } catch (err) { ytRes.hidden = true; openYouTubeSearch(q, 'Поиск в форме не сработал: ' + err.message); }
+    };
     pickBtn.onclick = async () => {
       const r = await TD.moment.pick({ link: TD.music.parseLink(f.link.value.trim()), file: f.audio.files[0] || null,
         start: TD.music.parseTime(f.start.value), length: VIDEO_SECS });

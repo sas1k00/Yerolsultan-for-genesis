@@ -154,5 +154,24 @@
     };
   }
 
-  TD.songinfo = { lookup, fromLink, release, cleanTitle, splitArtistTitle, splitBy, fromFileName, pickRelease, genreKey };
+  /** YouTube returns titles with HTML entities ("Rock &amp; Roll", "Don&#39;t"). */
+  function decodeEntities(s) {
+    return String(s || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  }
+  /** Search YouTube for a song by its name (needs TD.config.youtubeApiKey). Only videos
+   *  that may play inside other sites, so the synced player works with them. */
+  async function searchYouTube(q, key) {
+    const r = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=5&q=${enc(q)}&key=${enc(key)}`);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const why = (d.error && d.error.errors && d.error.errors[0] && d.error.errors[0].reason) || ('HTTP ' + r.status);
+      throw new Error(why === 'quotaExceeded' ? 'на сегодня поиски YouTube закончились' : why === 'keyInvalid' ? 'ключ YouTube неверный' : /referer|referrer/i.test(why) ? 'ключ YouTube не разрешён для этого сайта' : why);
+    }
+    return (d.items || []).filter((it) => it.id && it.id.videoId).map((it) => ({
+      id: it.id.videoId, title: decodeEntities(it.snippet.title), channel: decodeEntities(it.snippet.channelTitle),
+      thumb: ((it.snippet.thumbnails || {}).default || {}).url || '',
+    }));
+  }
+
+  TD.songinfo = { lookup, searchYouTube, decodeEntities, fromLink, release, cleanTitle, splitArtistTitle, splitBy, fromFileName, pickRelease, genreKey };
 })(globalThis.TD = globalThis.TD || {});

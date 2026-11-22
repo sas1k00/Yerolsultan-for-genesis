@@ -148,6 +148,14 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--ink); outli
 .stage canvas { width: 100%; height: 100%; display: block; }
 /* The cover stands in until the moving page is ready; it is also what the archive card grows into. */
 .stage .frame { view-transition-name: day-cover; }
+.yt-find { margin-top: 10px; }
+.yt-results { display: grid; gap: 6px; margin-top: 8px; }
+.yt-item { display: flex; gap: 10px; align-items: center; text-align: left; width: 100%; padding: 6px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); color: inherit; font: inherit; cursor: pointer; }
+.yt-item:hover, .yt-item:focus-visible { border-color: var(--ink); }
+.yt-item img, .yt-noimg { width: 96px; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; flex: none; background: var(--paper-2); display: block; }
+.yt-item b { display: block; font-weight: 600; line-height: 1.25; }
+.yt-item small { color: var(--ink-2); font: 12px var(--mono); }
 .caption-box textarea { width: 100%; font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); color: inherit; resize: vertical; }
 .frame-cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 ::view-transition-group(day-cover) { animation-duration: .55s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
