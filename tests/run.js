@@ -451,6 +451,11 @@ console.log('Song from a link: title, artist, year, genre');
   });
 }
 
+test('a finished-project day: worry, then relief — mixed, rising, caption keeps the turn', () => {
+  const a = TD.analyzeText('Сегодня мы с командой наконец закончили проект. Весь день работали, исправляли ошибки и переживали, что не успеем. Но когда всё заработало, мы почувствовали огромное облегчение. Этот вечер точно останется в памяти.', '2026-11-22');
+  ok(a.mixed > 0.5, 'mixed ' + a.mixed); eq(a.arc.kind, 'rise'); ok(/облегчение/.test(a.caption), a.caption);
+});
+
 console.log('Storage helpers');
 test('zip CRC-32 of "123456789" is CBF43926', () => eq(TD.store.crc32(new TextEncoder().encode('123456789')).toString(16).toUpperCase(), 'CBF43926'));
 test('ASCII file name for downloads', () => eq(TD.store.translit('Ночь в офисе перед сдачей'), 'noch-v-ofise-pered-sdachey'));
