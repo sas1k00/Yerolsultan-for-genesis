@@ -262,7 +262,9 @@
     };
     f.link.addEventListener('input', autofill); f.audio.addEventListener('change', autofill);
     // The artist typed by hand (Spotify gives only the title): now the year and genre can be found.
-    f.artist.addEventListener('change', async () => {
+    let artistTimer = 0;
+    const findRelease = async () => {
+      clearTimeout(artistTimer);
       const artist = f.artist.value.trim(), title = f.title.value.trim();
       if (!artist || !title || (f.year.dataset.user && f.genre.dataset.user)) return;
       const my = ++lookupSeq;
@@ -280,7 +282,10 @@
       fillField('year', rel.year);
       if (rel.genre && !f.genre.dataset.user) f.genre.value = rel.genre;
       info.textContent = `Нашлось: ${artist} — ${title}${rel.year ? ', ' + rel.year : ''}${rel.genre ? ', ' + TD.music.GENRES[rel.genre].label : ''}. Можно поправить.`;
-    });
+    };
+    // Look up as soon as the person stops typing (people rarely leave the field), and again on leaving it.
+    f.artist.addEventListener('input', () => { clearTimeout(artistTimer); artistTimer = setTimeout(findRelease, 900); });
+    f.artist.addEventListener('change', findRelease);
     // "Найти на YouTube": from the typed title and artist. With a key (js/config.js) the
     // matches appear right here; without one, YouTube's own search opens in a new tab.
     const ytBtn = $('#yt-find'), ytRes = $('#yt-results');
