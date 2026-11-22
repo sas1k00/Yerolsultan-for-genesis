@@ -229,10 +229,10 @@ test('with an audio file, the listener\'s energy counts half and the analysis is
   const m = TD.music.combineMusic({ bpm: 100, mode: 'major', modeConfidence: 0.6, key: 'C', energy: 0.3, valence: 0.3, brightness: 0.5 }, { energyHint: 'energetic' });
   eq(m.detectedEnergy, 0.3); ok(Math.abs(m.energy - 0.56) < 0.01, 'energy ' + m.energy);
 });
-test('links: YouTube, youtu.be, Spotify; other services are not accepted', () => {
+test('links: YouTube, youtu.be, YouTube Music; other services are not accepted', () => {
   eq(TD.music.parseLink('https://www.youtube.com/watch?v=abc123').embed, 'https://www.youtube.com/embed/abc123');
   eq(TD.music.parseLink('https://youtu.be/abc123').embed, 'https://www.youtube.com/embed/abc123');
-  eq(TD.music.parseLink('https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC').embed, 'https://open.spotify.com/embed/track/4uLU6hMCjMI75M1A2tKUQC');
+  eq(TD.music.parseLink('https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC'), null);
   eq(TD.music.parseLink('https://music.yandex.ru/album/123/track/456'), null); eq(TD.music.parseLink('https://soundcloud.com/forss/flickermood'), null);
   eq(TD.music.parseLink('https://music.youtube.com/watch?v=abc123').youtube, 'abc123');
   eq(TD.music.parseLink('not a link'), null);

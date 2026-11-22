@@ -1,8 +1,7 @@
 /* Тот день — fill in the song from its link (or file name): title and artist,
- * so nobody has to type them. Only YouTube and Spotify are used:
+ * so nobody has to type them. Only YouTube is used:
  *   - YouTube oEmbed: titles are usually "Artist - Title"; its "author" is the
  *     uploading channel, not the artist (unless "… - Topic" or "…VEVO").
- *   - Spotify oEmbed: the title only, so the person types the artist.
  *   - A file named "Artist - Title.mp3": read from the name, no network.
  * Year and genre are the person's own (optional) answers.
  * The pure parts run in Node for tests; the fetches run in the browser.
@@ -61,10 +60,6 @@
     if (link.youtube) {
       const d = await getJSON(`https://www.youtube.com/oembed?url=${enc(u)}&format=json`);
       return { ...splitArtistTitle(d.title, d.author_name), from: 'YouTube' };
-    }
-    if (/spotify/i.test(link.platform)) {
-      const d = await getJSON(`https://open.spotify.com/oembed?url=${enc(u)}`);
-      return { title: cleanTitle(d.title), artist: null, from: 'Spotify' };
     }
     return null;
   }

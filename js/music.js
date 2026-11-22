@@ -455,7 +455,7 @@
   }
 
   // -------------------------------------------------------------- links ---
-  /** A YouTube (YouTube Music) or Spotify link → how to play it; anything else → null. */
+  /** A YouTube (or YouTube Music) link → how to play it; anything else → null. */
   function parseLink(url) {
     url = String(url || '').trim();
     if (!url) return null;
@@ -469,9 +469,7 @@
       const id = u.searchParams.get('v') || (u.pathname.match(/\/(?:embed|shorts)\/([\w-]+)/) || [])[1];
       return { platform: h.startsWith('music.') ? 'YouTube Music' : 'YouTube', open: url, embed: id ? `https://www.youtube.com/embed/${id}` : null, youtube: id || null, start: ytStart };
     }
-    if (h === 'open.spotify.com' && (m = u.pathname.match(/\/(track|album|playlist)\/(\w+)/)))
-      return { platform: 'Spotify', open: url, embed: `https://open.spotify.com/embed/${m[1]}/${m[2]}` };
-    return null; // only YouTube and Spotify: the two services people actually share songs from
+    return null; // only YouTube: the one service whose player can start anywhere, follow the picker and be recorded
   }
 
   // ------------------------------------------------------------ browser ---
