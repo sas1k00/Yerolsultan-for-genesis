@@ -1,129 +1,132 @@
 [
  {
-  "id": "demo-autumn",
-  "date": "2026-10-12",
-  "text": "Гуляли с Айгерим по парку, всё было в жёлтых листьях. Было холодно, пальцы мёрзли, но мы купили какао в маленьком киоске и долго сидели на скамейке у пруда. Пахло мокрыми листьями и корицей. Говорили обо всём на свете и много смеялись. Под вечер солнце стало совсем медовым, и мы никуда не спешили.",
+  "id": "demo-berlin",
+  "date": "2026-05-20",
+  "text": "Наша первая поездка в Берлин. С самого утра солнце и небо без единого облака. Дошли до Рейхстага: флаги на ветру, огромные колонны, люди на ступенях. Потом гуляли к Берлинскому собору, зелёные купола и золотой крест. Ноги гудели от усталости, но на Потсдамской площади я закрыл глаза, подставил лицо солнцу и подумал: я правда здесь.",
   "photos": [
-   "photos/autumn-1.jpg",
-   "photos/autumn-2.jpg",
-   "photos/autumn-3.jpg"
+   "photos/berlin-1.jpg",
+   "photos/berlin-2.jpg",
+   "photos/berlin-3.jpg",
+   "photos/berlin-4.jpg",
+   "photos/berlin-5.jpg"
   ],
   "song": {
-   "file": "songs/warm-waltz.wav",
-   "artist": "Демо-трек",
-   "title": "Тёплый вальс",
+   "link": "https://www.youtube.com/watch?v=WHY-cdTf7wY",
+   "artist": "Nikkfurie",
+   "title": "The A La Menthe",
+   "start": "1:19",
+   "energyHint": "energetic",
+   "moodHint": "major"
+  }
+ },
+ {
+  "id": "demo-sea-friends",
+  "date": "2026-11-22",
+  "text": "Целый день на море с друзьями. Утром долго плавали, а потом я лёг на надувной жёлтый матрас и качался на волнах: вода была тёплой и спокойной, и впервые за поездку никуда не хотелось спешить. На пляже дурачились и смеялись, потом взяли синий сок со льдом и сидели на песке. На ужин пошли на шведский стол: суши, роллы и вечерняя суета вокруг, всё было очень вкусно. Ночью вернулись к отелю, башня была вся в тёплом золотом свете на фоне чёрного неба, и мы долго стояли и смотрели. Жаркий, лёгкий и очень весёлый день, совсем не хотелось уезжать.",
+  "photos": [
+   "photos/sea-friends-1.jpg",
+   "photos/sea-friends-2.jpg",
+   "photos/sea-friends-3.jpg",
+   "photos/sea-friends-4.jpg",
+   "photos/sea-friends-5.jpg"
+  ],
+  "song": {
+   "link": "https://www.youtube.com/watch?v=hN5X4kGhAtU",
+   "artist": "Empire Of The Sun",
+   "title": "we are the people",
+   "energyHint": "energetic",
+   "moodHint": "major",
+   "genre": "classical",
+   "start": "1:19"
+  }
+ },
+ {
+  "id": "demo-birthday-kolsai",
+  "date": "2026-11-21",
+  "text": "Эта поездка в Кольсай запомнилась мне прекрасными видами природы Казахстана. Я отправился туда праздновать день рождение своей подруги, с ночевкой. Было очень весело, это мой первый раз поездки со своими друзьями. Моя девушка упала с лошади, и я настолько переживал что мы выехали ночью в больницу на обследование. Слава Богу что все прошло хорошо.",
+  "photos": [
+   "photos/birthday-kolsai-1.jpg",
+   "photos/birthday-kolsai-2.jpg",
+   "photos/birthday-kolsai-3.jpg",
+   "photos/birthday-kolsai-4.jpg",
+   "photos/birthday-kolsai-5.jpg"
+  ],
+  "song": {
+   "link": "https://music.youtube.com/watch?v=p00v9ZFhWJM&si=CnsqfjPfOmGCt4E6&drli=1&t=140",
+   "artist": "Gorillaz",
+   "title": "On Melancholy Hill",
+   "energyHint": "calm",
+   "moodHint": "major",
+   "year": 2010,
+   "genre": "hiphop",
+   "start": "2:20"
+  }
+ },
+ {
+  "id": "demo-pamukkale",
+  "date": "2026-11-19",
+  "text": "Это была поездка в Памуккале. Жаркий день нагревал воду, которая слившись с кальцием стала как глина. С братом было весело, настолько, что я случайно порвал браслет который не покупал. Мы посмотрели древние сооружения, к тому же изучили историю появления Памуккале. Турция отличная страна с богатой историей и природой. Каждая такая поездка приносит радость и заинтересованность в что то новое",
+  "photos": [
+   "photos/pamukkale-1.jpg",
+   "photos/pamukkale-2.jpg",
+   "photos/pamukkale-3.jpg",
+   "photos/pamukkale-4.jpg",
+   "photos/pamukkale-5.jpg",
+   "photos/pamukkale-6.jpg"
+  ],
+  "song": {
+   "link": "https://music.youtube.com/watch?v=NxxjLD2pmlk&si=QQfJ4tHMwrb2ZhRb&drli=1",
+   "artist": "Gorillaz",
+   "title": "Feel Good Inc.",
+   "energyHint": "energetic",
+   "moodHint": "minor",
+   "year": 2005,
+   "genre": "hiphop"
+  }
+ },
+ {
+  "id": "demo-rafting",
+  "date": "2026-11-21",
+  "text": "Рафтинг в каньоне Кёпрюлю под Антальей. Утром инструктор Мехмет коротко объяснил, как грести и что делать, если выпадешь из лодки, и стало немного страшно. Вода ледяная и бирюзовая, на первом пороге лодку подбросило, и нас всех окатило с головой. Кричали от восторга, гребли изо всех сил, сердце колотилось. Впервые прыгали со скалы прямо в реку! Потом обедали форелью на берегу, мокрые, уставшие и абсолютно счастливые.",
+  "photos": [
+   "photos/rafting-1.jpg",
+   "photos/rafting-2.jpg",
+   "photos/rafting-3.jpg",
+   "photos/rafting-4.jpg",
+   "photos/rafting-5.jpg",
+   "photos/rafting-6.jpg"
+  ],
+  "song": {
+   "link": "https://music.youtube.com/watch?v=W_K0hemcU5o&si=qxmSAcxBu-_9KHCt&drli=1",
+   "artist": "MIA",
+   "title": "Paper Planes",
+   "energyHint": "energetic",
+   "moodHint": "minor",
+   "year": 2007,
+   "genre": "hiphop",
+   "start": "1:16"
+  }
+ },
+ {
+  "id": "demo-rome",
+  "date": "2026-11-22",
+  "text": "Целый день в Риме с одногруппниками. Утром пришли в Ватикан: собор Святого Петра в ярком солнце, небо такое синее, что статуи на крыше казались живыми. Потом гуляли по старым улицам к Пантеону, внутри было прохладно и очень тихо, хотя на площади толпа. Обедали в маленькой траттории: паста карбонара, пицца прямо из печи и тирамису, лучшая еда за всю поездку. Немного прошлись по магазинам у Испанской лестницы, купили подарки домой. Вечером дошли до фонтана Треви, шумела вода, вокруг сотни людей, а мы смеялись и впервые бросили монетку, чтобы обязательно вернуться.",
+  "photos": [
+   "photos/rome-1.jpg",
+   "photos/rome-2.jpg",
+   "photos/rome-3.jpg",
+   "photos/rome-4.jpg",
+   "photos/rome-5.jpg",
+   "photos/rome-6.jpg"
+  ],
+  "song": {
+   "link": "https://www.youtube.com/watch?v=fzqOga6hItk",
+   "artist": "Ricchi E Poveri",
+   "title": "sara perche ti amo",
+   "energyHint": "energetic",
+   "moodHint": "major",
    "genre": "jazz",
-   "year": 1962,
-   "moodHint": "major"
-  },
-  "truth": {
-   "bpm": 76,
-   "mode": "major"
-  }
- },
- {
-  "id": "demo-office",
-  "date": "2026-03-05",
-  "text": "Срочная сдача проекта. Всю ночь сидели в офисе с командой до четырёх утра, город за окном давно спал. Кофе уже не помогал, глаза болели от экрана, все нервничали и почти не разговаривали. В наушниках долбила электроника, чтобы не уснуть. В 3:40 нажали «отправить» — и наступила тишина.",
-  "photos": [
-   "photos/office-1.jpg",
-   "photos/office-2.jpg"
-  ],
-  "song": {
-   "file": "songs/night-code.wav",
-   "artist": "Демо-трек",
-   "title": "Ночной код",
-   "genre": "electronic",
-   "year": 2024,
-   "moodHint": "minor"
-  },
-  "truth": {
-   "bpm": 128,
-   "mode": "minor"
-  }
- },
- {
-  "id": "demo-sea",
-  "date": "2026-07-18",
-  "text": "Первый день на море в Актау! Проснулись рано и сразу побежали к воде. Солнце жарило, песок обжигал ноги, вода была бирюзовая и прозрачная. Брат прыгал с пирса, мы орали от восторга и ели арбуз прямо на пляже. Вечером закат был розовый, как жвачка.",
-  "photos": [
-   "photos/sea-1.jpg",
-   "photos/sea-2.jpg"
-  ],
-  "song": {
-   "file": "songs/sea-noon.wav",
-   "artist": "Демо-трек",
-   "title": "Морской полдень",
-   "genre": "pop",
-   "year": 2019,
-   "moodHint": "major"
-  },
-  "truth": {
-   "bpm": 116,
-   "mode": "major"
-  }
- },
- {
-  "id": "demo-snow",
-  "date": "2026-12-02",
-  "text": "Выпал первый снег. Шла домой одна по пустой улице, фонари светили жёлтым, снег скрипел под ногами. Было тихо и немного грустно — подумала о бабушке, она любила такую погоду. Долго стояла у подъезда и смотрела, как снежинки падают в свет фонаря.",
-  "photos": [
-   "photos/snow-1.jpg",
-   "photos/snow-2.jpg"
-  ],
-  "song": {
-   "file": "songs/first-snow.wav",
-   "artist": "Демо-трек",
-   "title": "Первый снег",
-   "genre": "ambient",
-   "year": 2021,
-   "moodHint": "minor"
-  },
-  "truth": {
-   "bpm": 64,
-   "mode": "minor"
-  }
- },
- {
-  "id": "demo-rain",
-  "date": "2026-04-14",
-  "text": "Весь день шёл дождь. Никуда не пошла, сидела дома на подоконнике с чаем и пледом, читала старую книгу. Капли стучали по стеклу, по радио тихо играл джаз. Было спокойно и немного сонно, никто не звонил. Мне было хорошо одной.",
-  "photos": [
-   "photos/rain-1.jpg",
-   "photos/rain-2.jpg"
-  ],
-  "song": {
-   "file": "songs/rain-window.wav",
-   "artist": "Демо-трек",
-   "title": "Дождь на окне",
-   "genre": "lofi",
-   "year": 2020,
-   "moodHint": "minor"
-  },
-  "truth": {
-   "bpm": 84,
-   "mode": "minor"
-  }
- },
- {
-  "id": "demo-birthday",
-  "date": "2026-09-26",
-  "text": "Мой день рождения! Друзья устроили сюрприз: выключили свет, а потом все закричали и включили гирлянды. Торт со свечами, громкая музыка, танцевали до упаду и смеялись так, что болели щёки. Подарили гитару — я чуть не расплакалась от счастья.",
-  "photos": [
-   "photos/party-1.jpg",
-   "photos/party-2.jpg"
-  ],
-  "song": {
-   "file": "songs/party.wav",
-   "artist": "Демо-трек",
-   "title": "Праздник",
-   "genre": "pop",
-   "year": 2025,
-   "moodHint": "major"
-  },
-  "truth": {
-   "bpm": 140,
-   "mode": "major"
+   "start": "0:56"
   }
  }
 ]

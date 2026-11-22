@@ -20,7 +20,10 @@ function eq(a, b, msg) { if (a !== b) throw new Error(`${msg || ''} expected ${J
 function ok(c, msg) { if (!c) throw new Error(msg || 'assertion failed'); }
 
 const title = (text, date, mood = { valence: 0.2, energy: 0.4 }) => TD.makeTitle(TD.analyzeText(text, date), mood).title;
-const demo = JSON.parse(fs.readFileSync(path.join(ROOT, 'demo/days.json'), 'utf8'));
+// Synthetic songs with a known tempo and key (tools/make_demo_assets.py) check the audio analysis;
+// demo/days.json holds the team's real days that the «Загрузить примеры» button builds.
+const demo = JSON.parse(fs.readFileSync(path.join(ROOT, 'demo/synthetic.json'), 'utf8'));
+const realDays = JSON.parse(fs.readFileSync(path.join(ROOT, 'demo/days.json'), 'utf8'));
 
 console.log('Text and folder names');
 test('case example 1 → «Осенний парк и какао»', () =>
@@ -40,7 +43,7 @@ test('«до четырёх утра» means night, not morning', () => eq(TD.an
 test('season falls back to the date', () => eq(TD.analyzeText('Обычный день', '2026-07-01').season, 'summer'));
 test('all demo names: 3–7 words, capital letter, no final punctuation, unique', () => {
   const seen = new Set();
-  demo.forEach((d) => {
+  [...demo, ...realDays].forEach((d) => {
     const t = title(d.text, d.date);
     const n = t.split(/\s+/).length;
     ok(n >= 3 && n <= 7, `${t}: ${n} words`);
@@ -462,6 +465,16 @@ test('Berlin: landmarks by their full names, the trip is to Berlin', () => {
   ok(names.includes('Рейхстаг') && names.includes('Берлинский собор') && names.includes('Потсдамская площадь'), names.join(', '));
   ok(!names.includes('Потсдамской'), 'no stray half-name: ' + names.join(', '));
   eq(a.travel.destination.nom, 'Берлин', 'a landmark is never the destination');
+});
+
+test('the examples are the team\'s real days: photos exist, songs are YouTube links the app accepts', () => {
+  ok(realDays.length >= 3 && realDays.length <= 7, realDays.length + ' days');
+  realDays.forEach((d) => {
+    d.photos.forEach((p) => ok(fs.existsSync(path.join(ROOT, 'demo', p)), 'missing ' + p));
+    ok(TD.music.parseLink(d.song.link) && TD.music.parseLink(d.song.link).youtube, 'not YouTube: ' + d.song.link);
+  });
+  const names = realDays.map((d) => title(d.text, d.date));
+  ok(names.includes('Поездка в Памуккале с братом'), names.join(' | '));
 });
 
 console.log('Storage helpers');

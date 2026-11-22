@@ -134,10 +134,12 @@
       if (have.has(d.id)) continue;
       btn.textContent = `Собираю ${i} из ${list.length}…`;
       const photos = await Promise.all(d.photos.map((p) => fetch('demo/' + p).then((r) => r.blob())));
-      const sb = await fetch('demo/' + d.song.file).then((r) => r.blob());
-      const file = new File([sb], d.song.file.split('/').pop(), { type: 'audio/wav' });
+      // A song is either a file next to the examples or, as people really add it, a YouTube link.
+      let file = null;
+      if (d.song.file) { const sb = await fetch('demo/' + d.song.file).then((r) => r.blob()); file = new File([sb], d.song.file.split('/').pop(), { type: 'audio/wav' }); }
       await buildDay({ id: d.id, date: d.date, text: d.text, photos, weather: '',
-        song: { file, fileName: file.name, artist: d.song.artist, title: d.song.title, genre: d.song.genre, year: d.song.year, moodHint: d.song.moodHint || '' } }, () => {});
+        song: { file, fileName: file && file.name, link: d.song.link || '', start: d.song.start || '', artist: d.song.artist, title: d.song.title,
+          genre: d.song.genre || '', year: d.song.year || null, moodHint: d.song.moodHint || '', energyHint: d.song.energyHint || '' } }, () => {});
     }
     route();
   }

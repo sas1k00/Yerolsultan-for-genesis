@@ -429,7 +429,7 @@ def main():
                      "genre": s["genre"], "year": s["year"], "moodHint": s["gen"]["mode"]},
             "truth": {"bpm": s["gen"]["bpm"], "mode": s["gen"]["mode"]},
         })
-    (ROOT / "days.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1))
+    (ROOT / "synthetic.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=1))
     print("ok", len(manifest), "days")
 
 
