@@ -455,6 +455,7 @@
   }
 
   // -------------------------------------------------------------- links ---
+  /** A YouTube (YouTube Music) or Spotify link → how to play it; anything else → null. */
   function parseLink(url) {
     url = String(url || '').trim();
     if (!url) return null;
@@ -470,11 +471,7 @@
     }
     if (h === 'open.spotify.com' && (m = u.pathname.match(/\/(track|album|playlist)\/(\w+)/)))
       return { platform: 'Spotify', open: url, embed: `https://open.spotify.com/embed/${m[1]}/${m[2]}` };
-    if (h.startsWith('music.yandex.') && (m = u.pathname.match(/\/album\/(\d+)\/track\/(\d+)/)))
-      return { platform: 'Яндекс Музыка', open: url, embed: `https://music.yandex.ru/iframe/album/${m[1]}/track/${m[2]}` };
-    if (h === 'music.apple.com') return { platform: 'Apple Music', open: url, embed: url.replace('music.apple.com', 'embed.music.apple.com') };
-    if (h === 'soundcloud.com') return { platform: 'SoundCloud', open: url, embed: `https://w.soundcloud.com/player/?url=${encodeURIComponent(url)}` };
-    return { platform: h, open: url, embed: null };
+    return null; // only YouTube and Spotify: the two services people actually share songs from
   }
 
   // ------------------------------------------------------------ browser ---

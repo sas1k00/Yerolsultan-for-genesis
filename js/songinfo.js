@@ -3,13 +3,12 @@
  *   1) Title (and artist where the service gives it): the services' public
  *      oEmbed endpoints. YouTube titles are usually "Artist - Title"; its
  *      "author" is the uploading channel, not the artist. Spotify gives the
- *      title only, so the person types the artist and the year follows. SoundCloud gives "Title by Artist". Apple Music links are
- *      looked up by track id.
+ *      title only, so the person types the artist and the year follows.
+ *      Only YouTube and Spotify links are accepted (see TD.music.parseLink).
  *   2) Year and genre: Apple's public iTunes Search. Among releases by the same
  *      artist with the same title, the earliest year is the original (a 2014
  *      compilation of a 1964 song is still a 1964 song); the genre most of
  *      them share wins.
- * Yandex Music has no public endpoint: those links keep manual entry.
  * The pure parts run in Node for tests; the fetches run in the browser.
  */
 (function (TD) {
@@ -39,11 +38,6 @@
     const m = t.match(/^(.+?)\s+[-–—‒]\s+(.+)$/);
     if (m) return { artist: cleanTitle(m[1]).replace(/\s+(ft\.?|feat\.?)\s.*$/i, ''), title: cleanTitle(m[2]) };
     return { artist: artistFromChannel(author), title: t };
-  }
-  /** SoundCloud: "Flickermood by Forss". */
-  function splitBy(raw) {
-    const m = String(raw || '').match(/^(.+)\s+by\s+(.+)$/i);
-    return m ? { title: cleanTitle(m[1]), artist: m[2].trim() } : { title: cleanTitle(raw), artist: null };
   }
   /** An audio file name: "01 Frank Sinatra - The Way You Look Tonight.mp3". */
   function fromFileName(name) {
@@ -123,19 +117,7 @@
       const d = await getJSON(`https://open.spotify.com/oembed?url=${enc(u)}`);
       return { title: cleanTitle(d.title), artist: null, from: 'Spotify' };
     }
-    if (/soundcloud/i.test(link.platform)) {
-      const d = await getJSON(`https://soundcloud.com/oembed?format=json&url=${enc(u)}`);
-      const r = splitBy(d.title);
-      return { title: r.title, artist: r.artist || d.author_name || null, from: 'SoundCloud' };
-    }
-    if (/apple/i.test(link.platform)) {
-      const id = (u.match(/[?&]i=(\d+)/) || u.match(/\/song\/[^/]+\/(\d+)/) || [])[1];
-      if (!id) return null;
-      const d = await getJSON(`https://itunes.apple.com/lookup?id=${id}&entity=song`);
-      const r = (d.results || []).find((x) => x.trackName);
-      return r ? { title: cleanTitle(r.trackName), artist: r.artistName, from: 'Apple Music' } : null;
-    }
-    return null; // Yandex Music and others: no public endpoint
+    return null;
   }
 
   /** Year and genre for a known title (and artist, if any). */
@@ -183,5 +165,5 @@
     }));
   }
 
-  TD.songinfo = { lookup, searchYouTube, decodeEntities, fromLink, release, cleanTitle, splitArtistTitle, splitBy, fromFileName, pickRelease, genreKey, translit };
+  TD.songinfo = { lookup, searchYouTube, decodeEntities, fromLink, release, cleanTitle, splitArtistTitle, fromFileName, pickRelease, genreKey, translit };
 })(globalThis.TD = globalThis.TD || {});

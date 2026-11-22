@@ -247,10 +247,7 @@
       clearTimeout(lookupTimer);
       lookupTimer = setTimeout(async () => {
         const link = TD.music.parseLink(f.link.value.trim()), file = f.audio.files[0] || null;
-        if (!link && !file) return;
-        if (link && !file && !/youtube|spotify|soundcloud|apple/i.test(link.platform)) {
-          info.textContent = `${link.platform} не сообщает название песни: впишите его ниже.`; return;
-        }
+        if (!link && !file) { if (f.link.value.trim()) info.textContent = 'Подходят только ссылки YouTube и Spotify.'; return; }
         const my = ++lookupSeq;
         info.textContent = 'Ищу название, исполнителя и год…';
         const r = await TD.songinfo.lookup({ link: file ? null : link, fileName: file && file.name });
@@ -348,7 +345,7 @@
       if (f.text.value.trim().length < 20) return (err.textContent = 'Напишите о дне хотя бы одно предложение.');
       if (!files.length) return (err.textContent = 'Добавьте хотя бы одно фото дня.');
       if (!audio && !link) return (err.textContent = 'Добавьте песню: ссылку или аудиофайл.');
-      if (link && !TD.music.parseLink(link)) return (err.textContent = 'Ссылка на песню выглядит неправильно.');
+      if (link && !TD.music.parseLink(link)) return (err.textContent = 'Подходят только ссылки YouTube и Spotify.');
       if (link && !audio && !f.energyHint.value && !f.moodHint.value && !feel.dataset.asked) {
         feel.dataset.asked = 1; feel.classList.add('need'); feel.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return (err.textContent = 'Как звучит песня? Два касания выше. Или нажмите «Собрать день» ещё раз, чтобы пропустить.');

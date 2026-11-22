@@ -229,11 +229,12 @@ test('with an audio file, the listener\'s energy counts half and the analysis is
   const m = TD.music.combineMusic({ bpm: 100, mode: 'major', modeConfidence: 0.6, key: 'C', energy: 0.3, valence: 0.3, brightness: 0.5 }, { energyHint: 'energetic' });
   eq(m.detectedEnergy, 0.3); ok(Math.abs(m.energy - 0.56) < 0.01, 'energy ' + m.energy);
 });
-test('links: YouTube, youtu.be, Spotify, Яндекс Музыка', () => {
+test('links: YouTube, youtu.be, Spotify; other services are not accepted', () => {
   eq(TD.music.parseLink('https://www.youtube.com/watch?v=abc123').embed, 'https://www.youtube.com/embed/abc123');
   eq(TD.music.parseLink('https://youtu.be/abc123').embed, 'https://www.youtube.com/embed/abc123');
   eq(TD.music.parseLink('https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC').embed, 'https://open.spotify.com/embed/track/4uLU6hMCjMI75M1A2tKUQC');
-  eq(TD.music.parseLink('https://music.yandex.ru/album/123/track/456').embed, 'https://music.yandex.ru/iframe/album/123/track/456');
+  eq(TD.music.parseLink('https://music.yandex.ru/album/123/track/456'), null); eq(TD.music.parseLink('https://soundcloud.com/forss/flickermood'), null);
+  eq(TD.music.parseLink('https://music.youtube.com/watch?v=abc123').youtube, 'abc123');
   eq(TD.music.parseLink('not a link'), null);
 });
 
@@ -431,8 +432,7 @@ console.log('Song from a link: title, artist, year, genre');
     eq(SI.splitArtistTitle('Despacito', 'Luis Fonsi - Topic').artist, 'Luis Fonsi');
     eq(SI.splitArtistTitle('My trip vlog', 'Some Channel').artist, null, 'a channel is not an artist');
   });
-  test('SoundCloud «Title by Artist» and file names «01 Artist - Title.mp3»; «song.wav» says nothing', () => {
-    eq(SI.splitBy('Flickermood by Forss').artist, 'Forss');
+  test('file names «01 Artist - Title.mp3»; «song.wav» says nothing', () => {
     eq(SI.fromFileName('01 Frank Sinatra - The Way You Look Tonight.mp3').title, 'The Way You Look Tonight');
     eq(SI.fromFileName('song.wav'), null);
   });
