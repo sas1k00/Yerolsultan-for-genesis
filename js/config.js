@@ -10,5 +10,5 @@
  */
 globalThis.TD = globalThis.TD || {};
 TD.config = {
-  youtubeApiKey: '',
+  youtubeApiKey: 'AIzaSyDkDkeuPlglABBC1OSFRyYjHtzIxmhhP7o',
 };
