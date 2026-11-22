@@ -54,6 +54,11 @@
       .replace(/эйфелев\S*(\s+башн\S*)?/g, ' __eiffel ')
       .replace(/стату\S*\s+свобод\S*/g, ' __liberty ')
       .replace(/пизанск\S*(\s+башн\S*)?/g, ' __pisa ')
+      .replace(/берлинск\S*\s+собор\S*/g, ' __berlindom ')
+      .replace(/потсдамск\S*\s+площад\S*/g, ' __potsdamer ')
+      .replace(/бранденбургск\S*(\s+ворот\S*)?/g, ' __brandenburg ')
+      .replace(/берлинск\S*\s+стен\S*/g, ' __berlinwall ')
+      .replace(/музейн\S*\s+остров\S*/g, ' __museuminsel ')
       // "көңілім жоқ" = not in the mood; "көңілім көтерілді" = my mood lifted
       .replace(/көңіл\S*\s+жоқ/g, ' көңілсіз ').replace(/көңіл\S*\s+көтеріл\S*/g, ' көңілді ');
     return t.split(new RegExp(`[^a-z${LOW}0-9_'’]+`, 'i')).filter(Boolean);
@@ -234,7 +239,9 @@
     while ((cm = capRe.exec(text))) {
       const prep = cm[1].toLowerCase(), word = cm[2], w = norm(word);
       if (!new RegExp(`^[${UP}]`).test(word) || SKIP_CAP.test(w)) continue;
-      const known = res.places.find((p) => p.proper && p.m.some((x) => w.split('-').some((part) => matches(part, x))));
+      // Also the first word of a known two-word name: «на Потсдамской площади» is «Потсдамская площадь».
+      const known = res.places.find((p) => p.proper && (p.m.some((x) => w.split('-').some((part) => matches(part, x)))
+        || (w.length >= 6 && norm(p.nom).startsWith(w.slice(0, 6)))));
       if (known) { if (prep === 'до' || prep === 'из') known.until = known.until || `${prep} ${word}`; continue; }
       let pl = res.places.find((p) => p.guessed && norm(p.nom) === w);
       if (!pl) { pl = { m: ['=' + w], nom: word, g: 'm', proper: true, guessed: true }; res.places.push(pl); }

@@ -456,6 +456,14 @@ test('a finished-project day: worry, then relief — mixed, rising, caption keep
   ok(a.mixed > 0.5, 'mixed ' + a.mixed); eq(a.arc.kind, 'rise'); ok(/облегчение/.test(a.caption), a.caption);
 });
 
+test('Berlin: landmarks by their full names, the trip is to Berlin', () => {
+  const a = TD.analyzeText('Наша первая поездка в Берлин. Дошли до Рейхстага, потом к Берлинскому собору. На Потсдамской площади я закрыл глаза и подставил лицо солнцу.', '2026-05-20');
+  const names = a.places.map((p) => p.nom);
+  ok(names.includes('Рейхстаг') && names.includes('Берлинский собор') && names.includes('Потсдамская площадь'), names.join(', '));
+  ok(!names.includes('Потсдамской'), 'no stray half-name: ' + names.join(', '));
+  eq(a.travel.destination.nom, 'Берлин', 'a landmark is never the destination');
+});
+
 console.log('Storage helpers');
 test('zip CRC-32 of "123456789" is CBF43926', () => eq(TD.store.crc32(new TextEncoder().encode('123456789')).toString(16).toUpperCase(), 'CBF43926'));
 test('ASCII file name for downloads', () => eq(TD.store.translit('Ночь в офисе перед сдачей'), 'noch-v-ofise-pered-sdachey'));
