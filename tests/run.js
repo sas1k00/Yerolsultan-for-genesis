@@ -425,7 +425,6 @@ test('one photo: no shot changes, so no interludes, and the page says why', () =
 console.log('Song from a link: title, artist, year, genre');
 {
   const SI = TD.songinfo;
-  const rel = (artist, trackName, year, genre) => ({ artistName: artist, trackName, releaseDate: year + '-01-01T08:00:00Z', primaryGenreName: genre });
   test('YouTube titles: «Artist - Title», noise removed (Official Video, Lyrics, премьера клипа)', () => {
     eq(JSON.stringify(SI.splitArtistTitle('Dimash - SOS (Official Video) | 4K', 'x')), JSON.stringify({ artist: 'Dimash', title: 'SOS' }));
     eq(JSON.stringify(SI.splitArtistTitle('Скриптонит — Положение (премьера клипа)', 'x')), JSON.stringify({ artist: 'Скриптонит', title: 'Положение' }));
@@ -435,20 +434,6 @@ console.log('Song from a link: title, artist, year, genre');
   test('file names «01 Artist - Title.mp3»; «song.wav» says nothing', () => {
     eq(SI.fromFileName('01 Frank Sinatra - The Way You Look Tonight.mp3').title, 'The Way You Look Tonight');
     eq(SI.fromFileName('song.wav'), null);
-  });
-  test('the original year wins over remasters and compilations; covers by others are ignored', () => {
-    const r = SI.pickRelease([rel('Frank Sinatra', 'The Way You Look Tonight (Remastered)', 2014, 'Pop'), rel('Michael Bublé', 'The Way You Look Tonight', 2003, 'Pop'),
-      rel('Frank Sinatra', 'The Way You Look Tonight', 1964, 'Jazz'), rel('Frank Sinatra', 'The Way You Look Tonight', 1964, 'Jazz')], 'Frank Sinatra', 'The Way You Look Tonight');
-    eq(r.year, 1964); eq(r.genre, 'jazz');
-  });
-  test('title only (Spotify): no artist is guessed — «Mahabbatym» has ten singers, the right one is not the most released', () => {
-    const rs = [rel('Moldanazar', 'Mahabbatym', 2018, 'Pop'), rel('Say Mo', 'Mahabbatym', 2022, 'R&B/Soul'),
-      rel('Say Mo', 'Mahabbatym (Amisko Remix)', 2023, 'Pop'), rel('akimmmich', 'Mahabbatym', 2024, 'Hip-Hop/Rap')];
-    eq(SI.pickRelease(rs, null, 'Mahabbatym'), null, 'title alone: ask the person');
-    const r = SI.pickRelease(rs, 'Moldanazar', 'Mahabbatym');
-    eq(r.artist, 'Moldanazar'); eq(r.year, 2018); eq(r.genre, 'pop');
-    eq(SI.pickRelease(rs, 'Молданазар', 'Mahabbatym').artist, 'Moldanazar', 'typed in Cyrillic');
-    eq(SI.translit('Қайрат Нұртас'), 'kairat nurtas');
   });
   test('YouTube search titles: HTML entities decoded («Rock &amp; Roll», «Don&#39;t»)', () => {
     eq(SI.decodeEntities('Rock &amp; Roll — Don&#39;t &quot;Stop&quot;'), 'Rock & Roll — Don\'t "Stop"');
@@ -463,9 +448,6 @@ console.log('Song from a link: title, artist, year, genre');
       let msg = ''; try { await SI.searchYouTube('x', 'KEY'); } catch (e) { msg = e.message; }
       eq(msg, 'на сегодня поиски YouTube закончились');
     } finally { globalThis.fetch = real; }
-  });
-  test('iTunes genres map onto the diary\'s genres', () => {
-    eq(SI.genreKey('Vocal Jazz'), 'jazz'); eq(SI.genreKey('Hip-Hop/Rap'), 'hiphop'); eq(SI.genreKey('K-Pop'), 'kpop'); eq(SI.genreKey('Soundtrack'), 'soundtrack'); eq(SI.genreKey('Alternative'), 'rock');
   });
 }
 

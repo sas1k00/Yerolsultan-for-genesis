@@ -66,7 +66,7 @@ fs.mkdirSync(OUT, { recursive: true });
   const auto = await page.evaluate(() => { const f = document.querySelector('#day-form'); return { artist: f.artist.value, title: f.title.value, year: f.year.value, genre: f.genre.value }; });
   const online = /Нашлось/.test(await page.textContent('#song-info'));
   console.log('song filled in from the link:', online ? JSON.stringify(auto) : '(song services unreachable: typed by hand)');
-  if (online && (auto.artist !== 'Frank Sinatra' || auto.year !== '1964')) errors.push('autofill: ' + JSON.stringify(auto));
+  if (online && auto.artist !== 'Frank Sinatra') errors.push('autofill: ' + JSON.stringify(auto));
   if (!online) {
     await page.fill('input[name=artist]', 'Frank Sinatra');
     await page.fill('input[name=title]', 'The Way You Look Tonight');

@@ -236,8 +236,7 @@
       pickBtn.title = ok ? 'Послушать песню и выбрать момент' : 'Работает со ссылкой YouTube или аудиофайлом';
     };
     f.link.addEventListener('input', updatePick); f.audio.addEventListener('change', updatePick); updatePick();
-    // Paste a link (or choose a file named "Artist - Title"): title, artist, year and genre fill
-    // themselves. Anything the person typed is never overwritten.
+    // Paste a link (or choose a file named "Artist - Title"): title and artist fill themselves. Anything the person typed is never overwritten.
     const info = $('#song-info');
     ['artist', 'title', 'year'].forEach((k) => f[k].addEventListener('input', () => { f[k].dataset.user = 1; }));
     f.genre.addEventListener('change', () => { f.genre.dataset.user = 1; });
@@ -249,43 +248,16 @@
         const link = TD.music.parseLink(f.link.value.trim()), file = f.audio.files[0] || null;
         if (!link && !file) { if (f.link.value.trim()) info.textContent = 'Подходят только ссылки YouTube и Spotify.'; return; }
         const my = ++lookupSeq;
-        info.textContent = 'Ищу название, исполнителя и год…';
+        info.textContent = 'Ищу название и исполнителя…';
         const r = await TD.songinfo.lookup({ link: file ? null : link, fileName: file && file.name });
         if (my !== lookupSeq) return; // a newer link was pasted meanwhile
         if (!r) { info.textContent = file ? 'По имени файла песню не узнать: впишите название и исполнителя.' : 'Не получилось узнать песню по ссылке: впишите название сами.'; return; }
-        fillField('title', r.title); fillField('artist', r.artist); fillField('year', r.year);
-        if (r.genre && !f.genre.dataset.user) f.genre.value = r.genre;
-        info.textContent = `Нашлось (${r.from}): ${[r.artist, r.title].filter(Boolean).join(' — ')}${r.year ? ', ' + r.year : ''}`
-          + `${r.genre ? ', ' + TD.music.GENRES[r.genre].label : ''}.`
-          + (r.artist || f.artist.value.trim() ? ' Можно поправить.' : ` ${r.from} не сообщает исполнителя: впишите его, и год с жанром найдутся.`);
+        fillField('title', r.title); fillField('artist', r.artist);
+        info.textContent = `Нашлось (${r.from}): ${[r.artist, r.title].filter(Boolean).join(' — ')}.`
+          + (r.artist || f.artist.value.trim() ? ' Можно поправить.' : ` ${r.from} не сообщает исполнителя: впишите его сами.`);
       }, 350);
     };
     f.link.addEventListener('input', autofill); f.audio.addEventListener('change', autofill);
-    // The artist typed by hand (Spotify gives only the title): now the year and genre can be found.
-    let artistTimer = 0;
-    const findRelease = async () => {
-      clearTimeout(artistTimer);
-      const artist = f.artist.value.trim(), title = f.title.value.trim();
-      if (!artist || !title || (f.year.dataset.user && f.genre.dataset.user)) return;
-      const my = ++lookupSeq;
-      let rel = null;
-      info.textContent = `Ищу год и жанр: ${artist} — ${title}…`;
-      let failed = false;
-      try { rel = await TD.songinfo.release(artist, title); } catch (e) { rel = null; failed = true; }
-      if (my !== lookupSeq) return;
-      if (!rel) {
-        // Not every song is on Apple Music (some live only on Spotify or YouTube): say so, don't stay silent.
-        info.textContent = failed ? 'Не получилось проверить год: нет связи. Год и жанр можно вписать сами — они не обязательны.'
-          : `«${title}» нет в каталоге Apple Music, поэтому год и жанр не нашлись. Впишите их сами или оставьте: они не обязательны.`;
-        return;
-      }
-      fillField('year', rel.year);
-      if (rel.genre && !f.genre.dataset.user) f.genre.value = rel.genre;
-      info.textContent = `Нашлось: ${artist} — ${title}${rel.year ? ', ' + rel.year : ''}${rel.genre ? ', ' + TD.music.GENRES[rel.genre].label : ''}. Можно поправить.`;
-    };
-    // Look up as soon as the person stops typing (people rarely leave the field), and again on leaving it.
-    f.artist.addEventListener('input', () => { clearTimeout(artistTimer); artistTimer = setTimeout(findRelease, 900); });
-    f.artist.addEventListener('change', findRelease);
     // "Найти на YouTube": from the typed title and artist. With a key (js/config.js) the
     // matches appear right here; without one, YouTube's own search opens in a new tab.
     const ytBtn = $('#yt-find'), ytRes = $('#yt-results');
